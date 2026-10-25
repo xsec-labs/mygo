@@ -172,10 +172,12 @@ func serveScheme(win *Window, h http.Handler, req *platform.SchemeRequest) {
 // CORS headers for those origins, which handlers may still override, and
 // reports whether the request is a preflight it answered. Pages of other
 // sites get no CORS headers, unless the window trusts them
-// (PageOptions.TrustedOrigins).
+// (PageOptions.TrustedOrigins). A page made with WebViewOptions.Untrusted
+// gets none: its origin is a custom scheme too, and would otherwise read the
+// app's frontend and the other plugins' files like the app's own pages.
 func allowCORS(win *Window, header http.Header, r *http.Request) (preflight bool) {
 	origin := r.Header.Get("Origin")
-	if origin == "" || origin == "null" || !win.isTrusted(appOrigin(origin)) {
+	if win.untrusted != nil || origin == "" || origin == "null" || !win.isTrusted(appOrigin(origin)) {
 		return false
 	}
 	header.Set("Access-Control-Allow-Origin", origin)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo/internal/fake"
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/internal/wait"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -522,3 +523,47 @@ func TestUntrustedDestroyReleasesTheWorker(t *testing.T) {
 
 // pageWindowOf returns the page's Window of a fake web view.
 func pageWindowOf(fv *fake.WebView) *Window { return fv.Window.H.(*windowHandler).w }
+
+// The origin of an untrusted page is a custom scheme like the app's own, but
+// it is a third party's: it gets no CORS headers, so it cannot read the app's
+// frontend or the files of another plugin.
+func TestUntrustedPageGetsNoCORSHeaders(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("data")) })
+	if err := Protocol.Handle("assets", mux); err != nil {
+		t.Fatal(err)
+	}
+	defer Protocol.Unhandle("assets")
+	if err := Protocol.Handle("xsec-plugin", mux); err != nil {
+		t.Fatal(err)
+	}
+	defer Protocol.Unhandle("xsec-plugin")
+	defer func(v bool) { schemeHosts = v }(schemeHosts)
+	schemeHosts = true // as on Windows
+	_, _, fv := untrustedWebView(t, UntrustedOptions{OnMessage: func(*Page, string) {}})
+
+	for _, origin := range []string{
+		"xsec-plugin://example",                // the page itself
+		"xsec-plugin://other",                  // another plugin
+		"mygo://localhost",                     // the frontend
+		"http://mygo.localhost",                // the frontend, as WebView2 serves it
+		"http://example.xsec-plugin.localhost", // the page, as WebView2 serves it
+	} {
+		rec := &recorder{finished: make(chan struct{})}
+		h := http.Header{}
+		h.Set("Origin", origin)
+		req := &platform.SchemeRequest{Context: context.Background(), Method: "GET", URL: "assets://localhost/data", Header: h, Responder: rec}
+		onMain(func() { fv.Window.H.SchemeRequest(req) })
+		select {
+		case <-rec.finished:
+		case <-time.After(wait.Guard):
+			t.Fatal("request did not finish")
+		}
+		if rec.status != 200 {
+			t.Errorf("%s: status %d", origin, rec.status)
+		}
+		if got := rec.header.Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("%s: Access-Control-Allow-Origin = %q, want none", origin, got)
+		}
+	}
+}
