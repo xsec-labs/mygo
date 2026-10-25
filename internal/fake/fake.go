@@ -1019,10 +1019,27 @@ func (c clipboard) Close() {
 
 type shell struct{}
 
-func (shell) OpenExternal(string) error { return nil }
-func (shell) OpenPath(string) error     { return nil }
-func (shell) ShowItemInFolder(string)   {}
-func (shell) Beep()                     {}
+var (
+	openedMu sync.Mutex
+	opened   []string
+)
+
+// OpenedURLs returns the URLs OpenExternal was given.
+func OpenedURLs() []string {
+	openedMu.Lock()
+	defer openedMu.Unlock()
+	return append([]string(nil), opened...)
+}
+
+func (shell) OpenExternal(u string) error {
+	openedMu.Lock()
+	opened = append(opened, u)
+	openedMu.Unlock()
+	return nil
+}
+func (shell) OpenPath(string) error   { return nil }
+func (shell) ShowItemInFolder(string) {}
+func (shell) Beep()                   {}
 
 // Trashed are the paths TrashItem was given.
 var Trashed []string

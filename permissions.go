@@ -40,6 +40,11 @@ func (h *windowHandler) PermissionRequested(kinds []string, origin string) bool 
 	fn := h.w.permissionHandler
 	h.w.mu.Unlock()
 	if fn == nil {
+		if h.w.untrusted != nil {
+			// Never the origin's trust: the page is a third party's.
+			h.w.untrusted.stats.blocked.Add(1)
+			return false
+		}
 		return h.w.isTrusted(origin)
 	}
 	req := PermissionRequest{Origin: origin}

@@ -316,6 +316,12 @@ type JumpListTask struct {
 // WindowOptions configures a native window and its webview. The public
 // package fills in all defaults before calling NewWindow.
 type WindowOptions struct {
+	// Untrusted marks a web view whose page is a third party's: the page
+	// may not use the system clipboard from script, nor take the window
+	// (or the screen) with element full screen, and the permissions the
+	// backend does not report to PermissionRequested are denied.
+	Untrusted bool
+
 	Title          string
 	X, Y           int
 	Width, Height  int

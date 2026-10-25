@@ -209,11 +209,21 @@ func appOrigin(origin string) string {
 	if err != nil || u.Scheme != "http" || u.Port() != "" {
 		return origin
 	}
-	scheme, ok := strings.CutSuffix(strings.ToLower(u.Hostname()), ".localhost")
-	if !ok || !(scheme == frontendScheme || Protocol.IsHandled(scheme)) {
+	rest, ok := strings.CutSuffix(strings.ToLower(u.Hostname()), ".localhost")
+	if !ok {
 		return origin
 	}
-	return scheme + "://localhost"
+	// http://<scheme>.localhost is <scheme>://localhost, and
+	// http://<host>.<scheme>.localhost is <scheme>://<host>.
+	for _, scheme := range Protocol.schemes() {
+		if rest == scheme {
+			return scheme + "://localhost"
+		}
+		if host, found := strings.CutSuffix(rest, "."+scheme); found && host != "" {
+			return scheme + "://" + host
+		}
+	}
+	return origin
 }
 
 // schemeWriter is the http.ResponseWriter for custom scheme requests. Body
@@ -393,7 +403,17 @@ or build it with <code>mygo build</code>, which embeds <code>frontendDist</code>
 `))
 }
 
-func (h *windowHandler) SchemeDownload(rawURL string) { go downloadScheme(h, rawURL) }
+func (h *windowHandler) SchemeDownload(rawURL string) {
+	if u := h.w.untrusted; u != nil {
+		// The handler would serve the file for nothing; DownloadStarted
+		// decides, so an untrusted page's download is not started here.
+		if len(h.w.onWillDownload.snapshot()) == 0 {
+			u.stats.blocked.Add(1)
+			return
+		}
+	}
+	go downloadScheme(h, rawURL)
+}
 
 // downloadScheme serves a URL of a custom scheme into a download.
 func downloadScheme(h *windowHandler, rawURL string) {

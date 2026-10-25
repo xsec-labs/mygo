@@ -32,12 +32,27 @@ import (
 
 // webURL maps a custom scheme URL of the window to the URL the webview
 // loads.
+//
+// <scheme>://localhost/ becomes http://<scheme>.localhost/, and
+// <scheme>://<host>/ becomes http://<host>.<scheme>.localhost/, so that each
+// host is an origin of its own, as on macOS and Linux.
 func (w *window) webURL(raw string) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.Host != "localhost" || !w.hasScheme(u.Scheme) {
+	if err != nil || !w.hasScheme(u.Scheme) {
 		return raw
 	}
-	u.Host = u.Scheme + ".localhost"
+	host, port := u.Hostname(), u.Port()
+	if host == "" {
+		return raw
+	}
+	web := u.Scheme + ".localhost"
+	if host != "localhost" {
+		web = host + "." + web
+	}
+	if port != "" {
+		web += ":" + port
+	}
+	u.Host = web
 	u.Scheme = "http"
 	return u.String()
 }
@@ -48,12 +63,27 @@ func (w *window) appURL(raw string) string {
 	if err != nil || u.Scheme != "http" {
 		return raw
 	}
-	scheme, ok := strings.CutSuffix(u.Host, ".localhost")
-	if !ok || !w.hasScheme(scheme) {
+	rest, ok := strings.CutSuffix(u.Hostname(), ".localhost")
+	if !ok {
 		return raw
 	}
-	u.Scheme, u.Host = scheme, "localhost"
-	return u.String()
+	for _, scheme := range w.opts.Schemes {
+		host := ""
+		switch {
+		case rest == scheme:
+			host = "localhost"
+		case strings.HasSuffix(rest, "."+scheme):
+			host = strings.TrimSuffix(rest, "."+scheme)
+		default:
+			continue
+		}
+		if p := u.Port(); p != "" {
+			host += ":" + p
+		}
+		u.Scheme, u.Host = scheme, host
+		return u.String()
+	}
+	return raw
 }
 
 func (w *window) hasScheme(s string) bool {
@@ -280,6 +310,7 @@ func (w *window) setUp(controller uintptr) {
 	add(wvAddWebResourceRequested, w.resourceRequested)
 	for _, scheme := range o.Schemes {
 		w.addFilter("http://" + scheme + ".localhost/*")
+		w.addFilter("http://*." + scheme + ".localhost/*")
 	}
 	w.filterAllRequests()
 	withHandler(w.acceleratorKeyPressed, func(h uintptr) uintptr {
@@ -468,6 +499,11 @@ func (w *window) permissionRequested(_, args uintptr) {
 	comCall(args, permGetKind, uintptr(unsafe.Pointer(&kind)))
 	name := map[int32]string{1: "microphone", 2: "camera", 3: "geolocation", 4: "notifications"}[kind]
 	if name == "" {
+		if w.opts.Untrusted {
+			// WebView2 would ask the user (clipboard read, ...): an
+			// untrusted page gets nothing it does not report.
+			comCall(args, permPutState, 2) // COREWEBVIEW2_PERMISSION_STATE_DENY
+		}
 		return
 	}
 	var p uintptr

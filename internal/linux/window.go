@@ -299,7 +299,11 @@ func (w *window) createWebView() {
 	settings := webkitWebViewGetSettings(w.web)
 	webkitSettingsSetEnableDeveloperExtras(settings, o.DevTools)
 	webkitSettingsSetAllowFileAccessFromFileURLs(settings, true)
-	webkitSettingsSetJavascriptCanAccessClipboard(settings, true)
+	webkitSettingsSetJavascriptCanAccessClipboard(settings, !o.Untrusted)
+	if o.Untrusted {
+		// Element full screen would fullscreen the host's toplevel window.
+		webkitSettingsSetEnableFullscreen(settings, false)
+	}
 	if o.UserAgent != "" {
 		webkitSettingsSetUserAgent(settings, cs(userAgentWithSuffix(o.UserAgent, o.UserAgentSuffix)))
 	} else if o.UserAgentSuffix != "" {

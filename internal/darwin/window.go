@@ -428,7 +428,12 @@ func (w *window) createWebView(content NSRect) {
 	send(prefs, "setValue:forKey:", uintptr(nsBool(o.DevTools)), uintptr(nsString("developerExtrasEnabled")))
 	send(prefs, "setValue:forKey:", uintptr(nsBool(true)), uintptr(nsString("allowFileAccessFromFileURLs")))
 	if respondsTo(prefs, "setElementFullscreenEnabled:") {
-		send(prefs, "setElementFullscreenEnabled:", 1)
+		send(prefs, "setElementFullscreenEnabled:", boolArg(!o.Untrusted))
+	}
+	if o.Untrusted {
+		// Script may not read or write the clipboard without the user.
+		send(prefs, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("javaScriptCanAccessClipboard")))
+		send(prefs, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("DOMPasteAllowed")))
 	}
 	// Tab reaches buttons, links and the other controls too, as it does in
 	// Chrome, Electron and WebView2, whatever the system's keyboard

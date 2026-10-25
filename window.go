@@ -258,6 +258,9 @@ type Window struct {
 	// start: the bridge, the preferences and the preload script. Main
 	// thread only.
 	userScripts []platform.UserScript
+	// untrusted is set for the page of a web view made with
+	// WebViewOptions.Untrusted (see untrusted.go).
+	untrusted *untrustedState
 	// secret starts every message of the bridge in this window's pages.
 	// Only the bridge knows it, so messages posted from elsewhere (an
 	// iframe of another origin) are ignored.
@@ -1459,6 +1462,11 @@ func (w *Window) enqueue(msg message, event bool) {
 	if w.content != nil {
 		return
 	}
+	if w.untrusted != nil && !isUntrustedMessage(msg) {
+		// Events, replies and everything else the bridge sends stay out of
+		// an untrusted page.
+		return
+	}
 	w.outMu.Lock()
 	if event && !w.domReady {
 		if len(w.held) == maxHeldEvents {
@@ -1730,6 +1738,12 @@ func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
 		})
 		return false
 	}
+	if u := h.w.untrusted; u != nil && nav.IsMainFrame {
+		// The pinned origin is policy; OnWillNavigate may only narrow it.
+		if !u.willNavigate(nav.URL) {
+			return false
+		}
+	}
 	if !nav.IsMainFrame || nav.Unasked {
 		return true
 	}
@@ -1749,7 +1763,12 @@ func (h *windowHandler) NavigationCommitted(url string) {
 			doc.shown = true
 		}
 	}
-	h.w.trusted = h.w.isTrusted(url)
+	// An untrusted page is never trusted, whatever its origin: what only
+	// trusted pages hear (file paths of drops, ...) never reaches it.
+	h.w.trusted = h.w.untrusted == nil && h.w.isTrusted(url)
+	if u := h.w.untrusted; u != nil {
+		u.committed(url)
+	}
 	h.w.outMu.Lock()
 	h.w.domReady = false
 	h.w.outMu.Unlock()
@@ -1773,6 +1792,11 @@ func (h *windowHandler) TitleChanged(title string) {
 	}
 	e := &TitleEvent{Title: title}
 	fire1(&h.w.onPageTitleUpdated, e)
+	if h.w.untrusted != nil {
+		// A web view's page shares the title of its window: a third
+		// party's page does not get to set it.
+		return
+	}
 	if !e.prevented && h.w.native != nil {
 		h.w.title = title
 		h.w.applyTitle(h.w.native)
@@ -1784,6 +1808,12 @@ func (h *windowHandler) NewWindow(req platform.NewWindowRequest) platform.Window
 	handler := h.w.openHandler
 	h.w.mu.Unlock()
 	r := WindowOpenRequest{URL: req.URL, FrameName: req.FrameName, Width: req.Width, Height: req.Height}
+	if u := h.w.untrusted; u != nil {
+		// Nothing opens for an untrusted page, not even the app's window
+		// open handler's windows or the system browser.
+		u.openRequested(req.URL)
+		return nil
+	}
 	if handler == nil {
 		if u, err := url.Parse(req.URL); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
 			go Shell.OpenExternal(req.URL)
