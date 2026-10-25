@@ -48,11 +48,18 @@ func (h *windowHandler) DownloadStarted(url, suggested string) string {
 		name = "download"
 	}
 	e := &DownloadEvent{URL: url, SuggestedName: name}
-	if dir, err := App.Path(PathDownloads); err == nil && os.MkdirAll(dir, 0o755) == nil {
-		e.Path = uniquePath(filepath.Join(dir, name))
+	// An untrusted page's downloads are cancelled unless a listener says
+	// where the file goes (no default in the Downloads directory).
+	if u := h.w.untrusted; u == nil {
+		if dir, err := App.Path(PathDownloads); err == nil && os.MkdirAll(dir, 0o755) == nil {
+			e.Path = uniquePath(filepath.Join(dir, name))
+		}
 	}
 	fire1(&h.w.onWillDownload, e)
 	if e.prevented || e.Path == "" {
+		if u := h.w.untrusted; u != nil {
+			u.stats.blocked.Add(1)
+		}
 		return ""
 	}
 	return e.Path

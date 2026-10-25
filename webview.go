@@ -43,6 +43,11 @@ type WebViewOptions struct {
 	// Transparent shows what the window's view paints under the web view
 	// through the transparent parts of its page.
 	Transparent bool
+	// Untrusted makes the page one the app does not trust, such as a third
+	// party plugin's: it gets no bridge, so it cannot call bound methods
+	// or the window controls, hears no events and sees no preferences, and
+	// only exchanges text messages with the app (see UntrustedOptions).
+	Untrusted *UntrustedOptions
 }
 
 // errNoContent is returned by NewWebView for windows showing a page.
@@ -79,10 +84,18 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 	// The web view's page lives in a Window of its own, which no list
 	// holds: everything a page does works through it as for a window.
 	pw := &Window{id: id, host: w, trustedOrigins: opts.Page.TrustedOrigins, secret: randomText(), background: bg}
+	if opts.Untrusted != nil {
+		u, err := newUntrustedState(pw, opts.Untrusted)
+		if err != nil {
+			return nil, err
+		}
+		pw.untrusted = u
+	}
 	pw.pg = &Page{pw}
 	pw.resetPage()
 	popts := pw.platformOptions(&WindowOptions{Page: opts.Page, Transparent: opts.Transparent})
 	popts.BackgroundColor = pw.backgroundColor()
+	popts.Untrusted = opts.Untrusted != nil
 	if opts.Transparent {
 		pw.background = nil
 	}
@@ -189,6 +202,9 @@ func (w *Window) destroyWebView() {
 		return
 	}
 	n.web.Close()
+	if w.untrusted != nil {
+		w.untrusted.close()
+	}
 	w.native = nil
 	w.destroyed.Store(true)
 	windows.Lock()

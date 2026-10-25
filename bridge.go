@@ -39,6 +39,11 @@ const preferencesScriptIndex = 1
 // pageScripts are the scripts a page of the window gets at document start:
 // the bridge, the preferences of the page and the preload script.
 func (w *Window) pageScripts() []platform.UserScript {
+	if w.untrusted != nil {
+		// An untrusted page gets the message channel and nothing else: no
+		// bridge, no preferences, no preload script.
+		return []platform.UserScript{{Source: untrustedScript(w.secret)}}
+	}
 	scripts := []platform.UserScript{{Source: w.bridgeScript()}, {Source: preferencesScript()}}
 	if w.preload != "" {
 		scripts = append(scripts, platform.UserScript{Source: w.preload})
@@ -57,7 +62,7 @@ func localeEvent(locale string) (message, error) {
 // tells its listeners only of a language it did not have. Main thread
 // only.
 func (w *Window) sendLocale() {
-	if w.content != nil || w.native == nil {
+	if w.content != nil || w.native == nil || w.untrusted != nil {
 		return
 	}
 	if msg, err := localeEvent(App.Locale()); err == nil {
@@ -74,7 +79,7 @@ func pagesLocaleChanged(locale string) {
 		return
 	}
 	for _, w := range pageWindows() {
-		if w.content != nil || w.native == nil {
+		if w.content != nil || w.native == nil || w.untrusted != nil {
 			continue
 		}
 		w.userScripts = w.pageScripts()
@@ -104,7 +109,7 @@ func sendPreferences() {
 // the backend replaces, so that their first paint has them, and the
 // current one through the event. Main thread only.
 func (w *Window) sendPreferences(prefs ThemePreferences, script string) {
-	if w.content != nil || w.native == nil || len(w.userScripts) <= preferencesScriptIndex ||
+	if w.content != nil || w.native == nil || w.untrusted != nil || len(w.userScripts) <= preferencesScriptIndex ||
 		w.userScripts[preferencesScriptIndex].Source == script {
 		return
 	}
@@ -220,6 +225,10 @@ func (w *Window) handleMessage(msg string) {
 	msg, ok := strings.CutPrefix(msg, w.secret)
 	if !ok {
 		return // not from the bridge
+	}
+	if w.untrusted != nil {
+		w.handleUntrustedMessage(msg)
+		return
 	}
 	// Calls are decoded and executed off the main thread. The page context
 	// is captured here so a navigation cannot slip in between.
