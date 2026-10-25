@@ -3,6 +3,7 @@ package parser
 import (
 	"math/rand/v2"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -81,6 +82,44 @@ func TestAppendChunks(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestSetConcatenated sets documents as an app streaming a reply into a
+// string does, text += token, the string new each time: they parse as
+// when parsed whole, and the blocks parsed along the way keep no copy of
+// the text per token alive (T-01b: 390 KB so held 1.5 GB).
+func TestSetConcatenated(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6))
+	for _, src := range corpus(t) {
+		d := New(Default)
+		before := liveHeap()
+		text := ""
+		for i := 0; i < len(src); {
+			n := min(1+r.IntN(12), len(src)-i)
+			text += src[i : i+n]
+			i += n
+			d.Set(text)
+			d.HTML() // the inlines, which hold their text, of every block
+		}
+		if want := render(src, Default); d.HTML() != want {
+			t.Fatalf("got  %q\nwant %q", d.HTML(), want)
+		}
+		text = ""
+		// The document, its buffer of up to twice the text, and what it
+		// parsed; a copy per token is many times more.
+		if held := int64(liveHeap()) - int64(before); held > 40*int64(len(src))+1<<20 {
+			t.Errorf("a %d KB document holds %d KB", len(src)>>10, held>>10)
+		}
+		runtime.KeepAlive(d)
+	}
+}
+
+func liveHeap() uint64 {
+	runtime.GC()
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
 }
 
 // TestStreamingEnds checks that a document streamed with healing parses

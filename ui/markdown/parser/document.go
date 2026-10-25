@@ -369,7 +369,17 @@ func (d *Document) Set(src string) {
 	case src == old:
 		return
 	case len(src) > len(old) && src[:len(old)] == old:
-		// The new source is the string given, copied nowhere.
+		if len(old) > 0 && unsafe.StringData(src) != unsafe.StringData(old) {
+			// A new string, as text += delta makes: the blocks parsed
+			// so far hold the old one, which keeping this as well would
+			// keep alive, a copy of the text for every append. The
+			// document's own buffer, which grows by doubling, takes
+			// the new text instead.
+			d.Append(src[len(old):])
+			return
+		}
+		// More of the same string, as src[:n] of a growing n: the new
+		// source is the string given, copied nowhere.
 		d.reserve(src[len(old):])
 		d.src = src
 		d.parseTail()
