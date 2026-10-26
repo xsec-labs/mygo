@@ -296,6 +296,22 @@ const screenCaptureGuard = `(()=>{const deny=function getDisplayMedia(){` +
 	`for(const t of [window.MediaDevices&&MediaDevices.prototype,navigator.mediaDevices]){` +
 	`if(t)try{Object.defineProperty(t,"getDisplayMedia",{value:deny,writable:false,configurable:false})}catch(e){}}})();`
 
+// geolocationGuard makes the position requests of the page fail as a denied
+// permission, in the page and in the frames that run this script. On macOS
+// the web view asks the app's own location authorization, not the app: a
+// .app the user let use their location would hand the position to a page
+// that never went through PermissionRequested. The guard answers first
+// (code 1, PERMISSION_DENIED) and the native request is never made. Like the
+// screen capture guard it is a layer, not a boundary.
+const geolocationGuard = `(()=>{const E=(()=>{const e=new Error("User denied Geolocation");` +
+	`return{code:1,message:e.message,PERMISSION_DENIED:1,POSITION_UNAVAILABLE:2,TIMEOUT:3}})();` +
+	`let n=0;const fail=function(_ok,err){if(typeof err==="function")setTimeout(()=>err(E),0)};` +
+	`const deny={getCurrentPosition:function getCurrentPosition(ok,err){fail(ok,err)},` +
+	`watchPosition:function watchPosition(ok,err){fail(ok,err);return++n},` +
+	`clearWatch:function clearWatch(){}};` +
+	`for(const t of [window.Geolocation&&Geolocation.prototype,navigator.geolocation]){` +
+	`if(t)for(const k in deny)try{Object.defineProperty(t,k,{value:deny[k],writable:false,configurable:false})}catch(e){}}})();`
+
 // untrustedScript is the page's only connection to the app. It binds the
 // native postMessage at document start and defines objects the page cannot
 // replace, so the page cannot be handed the secret by swapping postMessage.
@@ -304,7 +320,7 @@ const screenCaptureGuard = `(()=>{const deny=function getDisplayMedia(){` +
 // whoever has it can only send what xsecHost sends.
 func untrustedScript(secret string) string {
 	s, _ := json.Marshal(secret)
-	return screenCaptureGuard + `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
+	return screenCaptureGuard + geolocationGuard + `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
 		`const c=window.chrome&&window.chrome.webview;` +
 		// Bound now, at document start: the page cannot swap postMessage later
 		// to be handed what is posted.

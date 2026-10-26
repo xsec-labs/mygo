@@ -69,3 +69,38 @@ func TestUntrustedPageCannotCaptureScreen(t *testing.T) {
 		t.Errorf("the page replaced the getDisplayMedia guard (%v, %v)", restored, err)
 	}
 }
+
+// TestUntrustedPageCannotLocate: an untrusted page asking for the position
+// gets PERMISSION_DENIED from the script's guard, at once, whatever the
+// app's own location authorization is (the request never reaches the system).
+func TestUntrustedPageCannotLocate(t *testing.T) {
+	v := untrustedScreenView(t)
+	if has, _ := mygo.EvalAs[bool](v.Page(), "typeof navigator.geolocation !== 'undefined'"); !has {
+		t.Skip("this web view has no geolocation: nothing to ask")
+	}
+	got, err := mygo.EvalAs[string](v.Page(), `new Promise((resolve) => {
+		const t0 = performance.now();
+		const done = (r) => resolve(r + "@" + (performance.now() - t0 < 2000 ? "fast" : "slow"));
+		navigator.geolocation.getCurrentPosition(() => done("GRANTED"), (e) => done("code" + e.code), { timeout: 5000 });
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "code1@fast" {
+		t.Errorf("getCurrentPosition in an untrusted page: %q, want code1@fast", got)
+	}
+	watched, err := mygo.EvalAs[string](v.Page(), `new Promise((resolve) => {
+		navigator.geolocation.watchPosition(() => resolve("GRANTED"), (e) => resolve("code" + e.code));
+	})`)
+	if err != nil || watched != "code1" {
+		t.Errorf("watchPosition in an untrusted page: %q (%v), want code1", watched, err)
+	}
+	restored, err := mygo.EvalAs[bool](v.Page(), `(() => {
+		const d = Object.getOwnPropertyDescriptor(Geolocation.prototype, "getCurrentPosition");
+		try { Object.defineProperty(Geolocation.prototype, "getCurrentPosition", { value: () => 1 }) } catch (e) {}
+		return d.configurable || Geolocation.prototype.getCurrentPosition() === 1;
+	})()`)
+	if err != nil || restored {
+		t.Errorf("the page replaced the geolocation guard (%v, %v)", restored, err)
+	}
+}

@@ -313,6 +313,13 @@ func (w *window) setUp(controller uintptr) {
 		w.addFilter("http://*." + scheme + ".localhost/*")
 	}
 	w.filterAllRequests()
+	if o.Untrusted {
+		// WebView2 starts a navigation's request even when NavigationStarting
+		// cancels it, so an untrusted page that sets location to a URL with
+		// data in it reaches the server whatever the navigation policy says.
+		// Everything that is not the app's own scheme is answered here.
+		w.addFilter("*")
+	}
 	withHandler(w.acceleratorKeyPressed, func(h uintptr) uintptr {
 		return comCall(controller, ctlAddAcceleratorKeyPressed, h, uintptr(unsafe.Pointer(&tok)))
 	})
@@ -1060,6 +1067,9 @@ func (w *window) resourceRequested(_, args uintptr) {
 	}
 	target := w.appURL(uri)
 	if target == uri {
+		if w.opts.Untrusted && leavesTheApp(uri) {
+			w.respond(args, 0, http.StatusForbidden, nil, nil)
+		}
 		return // not ours
 	}
 	comCall(req, reqGetMethod, uintptr(unsafe.Pointer(&p)))
@@ -1078,6 +1088,17 @@ func (w *window) resourceRequested(_, args uintptr) {
 	sreq.Context = ctx
 	sreq.Responder = &schemeResponse{w: w, args: args, deferral: deferral, cancel: cancel, url: target, document: resource == document}
 	w.h.SchemeRequest(sreq)
+}
+
+// leavesTheApp reports whether a request goes to the network or the disk
+// instead of to the app's own schemes, which an untrusted page may not.
+func leavesTheApp(uri string) bool {
+	scheme, _, _ := strings.Cut(strings.ToLower(uri), ":")
+	switch scheme {
+	case "http", "https", "ws", "wss", "ftp", "file":
+		return true
+	}
+	return false
 }
 
 func requestHeaders(req uintptr) http.Header {
