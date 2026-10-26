@@ -488,6 +488,9 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 	if h := rt.handler(chain); h != nil && rt.deliver(h, InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}) {
 		return
 	}
+	if rt.takeWheel(chain, dx, dy, mods) {
+		return
+	}
 	// Shift turns the wheel sideways: down is toward the end, which is
 	// to the left right to left.
 	sideways := mods&Shift != 0 && dx == 0
@@ -519,6 +522,42 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 			return
 		}
 	}
+}
+
+// wheelTake is the notches an element took (Wheeled), added up in its own
+// axes for each combination of modifiers.
+type wheelTake struct {
+	dx, dy [16]float32
+	has    uint16
+}
+
+// takeWheel gives a notch to the innermost element under the pointer that
+// asked for the wheel with the modifiers held (Wheeled), before the scroll
+// containers around it, and reports whether one took it.
+func (rt *engine) takeWheel(chain []uint64, dx, dy float32, mods Modifiers) bool {
+	m := wheelCombo(mods)
+	for _, id := range chain {
+		s := rt.states[id]
+		if s == nil || s.wheelMods&(1<<m) == 0 || s.flags&flagDisabled != 0 {
+			continue
+		}
+		if s.wheeled == nil {
+			s.wheeled = new(wheelTake)
+		}
+		lx, ly := s.vector(rt.pointerX, rt.pointerY, dx, dy)
+		s.wheeled.dx[m] += lx
+		s.wheeled.dy[m] += ly
+		s.wheeled.has |= 1 << m
+		rt.requestFrame()
+		return true
+	}
+	return false
+}
+
+// wheelCombo returns the number of a combination of modifier keys, which
+// counts Shift, Ctrl, Alt and Super and no other.
+func wheelCombo(mods Modifiers) uint {
+	return uint(mods & (Shift | Ctrl | Alt | Super))
 }
 
 // zoom gives a pinch to the element under the pointer that handles its
@@ -1094,6 +1133,27 @@ func (e *node) ClickModifiers() Modifiers {
 		return 0
 	}
 	return e.st.clickMods
+}
+
+// Wheeled returns how far the mouse wheel or a touchpad turned over the
+// element since the last frame, in the element's own axes as the wheel
+// reports it, while exactly the modifier keys mods were held: Wheeled(Ctrl)
+// reads Ctrl+wheel, Wheeled(0) the wheel on its own. ok tells that it
+// turned. An element asking takes those notches, so that the scroll
+// containers around it do not scroll with them; the others still scroll.
+// The innermost element asking for a combination takes it, and one that is
+// disabled takes none. HandleInput sees the wheel before this does.
+func (e *node) Wheeled(mods Modifiers) (dx, dy float32, ok bool) {
+	if !e.hasState() {
+		return 0, 0, false
+	}
+	m := wheelCombo(mods)
+	e.wheelMods |= 1 << m
+	if e.disabled() || e.st.wheeled == nil || e.st.wheeled.has&(1<<m) == 0 {
+		return 0, 0, false
+	}
+	e.c.rt.consumed = true
+	return e.st.wheeled.dx[m], e.st.wheeled.dy[m], true
 }
 
 // DoubleClicked reports a double click on the element.

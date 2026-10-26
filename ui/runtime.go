@@ -795,6 +795,7 @@ func (rt *engine) forgetInput() {
 			continue
 		}
 		s.clicks, s.rightClicks, s.doubleClicks = 0, 0, 0
+		s.wheeled = nil
 		s.pressPending = false
 		s.dragX, s.dragY = 0, 0
 		s.released = false
@@ -1007,6 +1008,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.parent = 0
 	}
 	s.flags = e.flags
+	s.wheelMods = e.wheelMods
 	s.rtl = e.rtl()
 	s.anchor = 0
 	if e.popover != nil {

@@ -36,6 +36,9 @@ func TestOptionalElementInput(t *testing.T) {
 			if x, y, ok := e.Dragged(); x != 0 || y != 0 || ok {
 				t.Fatal("an absent element reported a drag")
 			}
+			if x, y, ok := e.Wheeled(Ctrl); x != 0 || y != 0 || ok {
+				t.Fatal("an absent element reported the wheel")
+			}
 			if e.Focus() != e || e.AutoFocus() != e || e.ScrollIntoView() != e {
 				t.Fatal("an absent element's action changed its receiver")
 			}

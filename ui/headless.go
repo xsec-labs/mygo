@@ -669,6 +669,12 @@ func (t *Tester) Wheel(x, y, dx, dy float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy)})
 }
 
+// WheelWith turns the wheel as Wheel does, holding the modifier keys mods,
+// as Ctrl+wheel does.
+func (t *Tester) WheelWith(mods Modifiers, x, y, dx, dy float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Mods: platform.Modifiers(mods)})
+}
+
 // Pinch zooms by scale with the pointer at (x, y), as pinching a touchpad
 // does (InputZoom).
 func (t *Tester) Pinch(x, y, scale float32) {
