@@ -285,6 +285,17 @@ func (u *untrustedState) openRequested(rawURL string) {
 	}
 }
 
+// screenCaptureGuard makes getDisplayMedia reject, in the page and in the
+// frames that run this script. The backends turn screen capture off where
+// they can (WKPreferences on macOS, the permission request on Linux); this
+// is the layer under them, for the web views that have no switch (WebView2)
+// and for a switch a system update takes away. It is not a boundary: script
+// that gets a pristine MediaDevices from elsewhere is only stopped by those.
+const screenCaptureGuard = `(()=>{const deny=function getDisplayMedia(){` +
+	`return Promise.reject(new DOMException("Screen capture is not allowed in this page","NotAllowedError"))};` +
+	`for(const t of [window.MediaDevices&&MediaDevices.prototype,navigator.mediaDevices]){` +
+	`if(t)try{Object.defineProperty(t,"getDisplayMedia",{value:deny,writable:false,configurable:false})}catch(e){}}})();`
+
 // untrustedScript is the page's only connection to the app. It binds the
 // native postMessage at document start and defines objects the page cannot
 // replace, so the page cannot be handed the secret by swapping postMessage.
@@ -293,7 +304,7 @@ func (u *untrustedState) openRequested(rawURL string) {
 // whoever has it can only send what xsecHost sends.
 func untrustedScript(secret string) string {
 	s, _ := json.Marshal(secret)
-	return `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
+	return screenCaptureGuard + `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
 		`const c=window.chrome&&window.chrome.webview;` +
 		// Bound now, at document start: the page cannot swap postMessage later
 		// to be handed what is posted.

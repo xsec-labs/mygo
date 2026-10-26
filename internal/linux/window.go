@@ -1678,6 +1678,10 @@ func initWindowCallbacks() {
 			if webkitUserMediaPermissionIsForAudioDevice(req) {
 				kinds = append(kinds, "microphone")
 			}
+			if len(kinds) == 0 && w.opts.Untrusted {
+				// Neither camera nor microphone: getDisplayMedia.
+				kinds = append(kinds, "screen")
+			}
 		case gTypeCheckInstanceIsA(req, webkitGeolocationPermissionRequestGetType()):
 			kinds = []string{"geolocation"}
 		case gTypeCheckInstanceIsA(req, webkitNotificationPermissionRequestGetType()):

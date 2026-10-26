@@ -47,7 +47,11 @@ the sending `*Page` in `UntrustedOptions.OnMessage`. Messages are size-limited
 and queued with a bound. Permission requests, `window.open` and
 `target=_blank` (reported to `OnOpenRequest`), downloads, main-frame
 navigation off the first committed origin, script clipboard access and element
-full screen are refused unless the app opts in. On Windows, custom scheme URLs
+full screen are refused unless the app opts in. Screen capture
+(`getDisplayMedia`) is never available to an untrusted page: macOS turns it off
+in `WKPreferences` (WebKit otherwise raises the system picker without asking
+the app), Linux refuses the request, and the page script makes the call reject
+everywhere. On Windows, custom scheme URLs
 map per host to `http://<host>.<scheme>.localhost`. New files: `untrusted.go`,
 `untrusted_test.go`, `internal/windows/scheme_url_test.go`.
 
