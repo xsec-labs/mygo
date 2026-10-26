@@ -10,8 +10,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const screenCapturePage = `<!doctype html><html><body></body></html>`
-
 // untrustedScreenView shows an untrusted page in a window of native UI.
 func untrustedScreenView(t *testing.T) *mygo.WebView {
 	t.Helper()
@@ -26,7 +24,11 @@ func untrustedScreenView(t *testing.T) *mygo.WebView {
 		t.Fatal(err)
 	}
 	w.Update(func() { view.Store(v) })
-	v.Page().LoadHTML(screenCapturePage, "")
+	// A page of a registered scheme: a web view only exposes mediaDevices to
+	// a secure context.
+	if err := v.Page().LoadURL("app://localhost/"); err != nil {
+		t.Fatal(err)
+	}
 	waitForPage(t, v.Page(), "document.readyState === 'complete'")
 	return v
 }
