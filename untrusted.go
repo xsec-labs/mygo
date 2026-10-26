@@ -253,6 +253,7 @@ func (u *untrustedState) willNavigate(rawURL string) bool {
 	u.mu.Lock()
 	origin := u.origin
 	u.mu.Unlock()
+	println("DEBUG willNavigate", rawURL, "pinned", origin)
 	if origin == "" || originOf(rawURL) == origin {
 		return true
 	}

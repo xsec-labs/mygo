@@ -394,7 +394,9 @@ func (w *window) navigationStarting(_, args uintptr) {
 		w.programmatic = false
 		nav.Unasked = true
 	}
-	if !w.h.WillNavigate(nav) {
+	allow := w.h.WillNavigate(nav)
+	println("DEBUG navigationStarting", uri, "user", user, "kind", kind, "unasked", nav.Unasked, "allow", allow)
+	if !allow {
 		comCall(args, navStartingPutCancel, 1)
 		return
 	}
