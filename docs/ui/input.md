@@ -40,7 +40,9 @@ element since the last frame, in the element's own axes, while exactly the
 modifier keys `mods` were held: `Wheeled(ui.Ctrl)` is Ctrl+wheel, as a
 zoom, and `Wheeled(0)` the wheel on its own. An element asking takes those
 notches, so the scroll containers around it do not scroll with them, and
-they still scroll with the other combinations. The innermost element asking
+they still scroll with the other combinations. A touchpad pinch is not a
+wheel with Ctrl on Windows and the web: it arrives as `InputZoom` in
+`HandleInput`, so a zoom canvas reads both. The innermost element asking
 for a combination takes it, and `HandleInput` still sees the wheel first.
 `Tester.WheelWith(mods, x, y, dx, dy)` turns the wheel with keys held.
 
