@@ -439,7 +439,8 @@ const (
 
 // navigationFailureReported reports whether a failed navigation with this
 // status is a failure of the app's page. A cancelled one was replaced by
-// another navigation, which reports for itself.
+// another navigation, which reports for itself, or was refused by the app
+// itself in NavigationStarting.
 func navigationFailureReported(status int32) bool {
 	return status != webErrorOperationCanceled
 }
