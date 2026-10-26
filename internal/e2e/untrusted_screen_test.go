@@ -29,7 +29,7 @@ func untrustedScreenView(t *testing.T) *mygo.WebView {
 	if err := v.Page().LoadURL("app://localhost/"); err != nil {
 		t.Fatal(err)
 	}
-	waitForPage(t, v.Page(), "document.readyState === 'complete'")
+	waitForPage(t, v.Page(), "location.protocol === 'app:' && document.readyState === 'complete'")
 	return v
 }
 
