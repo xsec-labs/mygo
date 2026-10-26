@@ -39,14 +39,17 @@ func untrustedScreenView(t *testing.T) *mygo.WebView {
 // darwin test).
 func TestUntrustedPageCannotCaptureScreen(t *testing.T) {
 	v := untrustedScreenView(t)
-	if has, _ := mygo.EvalAs[bool](v.Page(), "!!(navigator.mediaDevices)"); !has {
-		state, _ := mygo.EvalAs[string](v.Page(), "location.href + ' secure=' + isSecureContext + ' MediaDevices=' + typeof MediaDevices + ' RTC=' + typeof RTCPeerConnection + ' guard=' + (typeof MediaDevices !== 'undefined' && !!Object.getOwnPropertyDescriptor(MediaDevices.prototype, 'getDisplayMedia'))")
-		t.Skipf("this web view exposes no navigator.mediaDevices (%s; a macOS process without an Info.plist has none): nothing to ask", state)
+	if has, _ := mygo.EvalAs[bool](v.Page(), "typeof MediaDevices !== 'undefined'"); !has {
+		t.Skip("this web view has no MediaDevices: nothing to ask")
 	}
+	// Called the way the page would, from a click, on the object it has or
+	// on a stand-in where the web view hides navigator.mediaDevices (a macOS
+	// process without an Info.plist): either way the answer is the guard's.
 	got, err := mygo.EvalAs[string](v.Page(), `new Promise((resolve) => {
+		const md = navigator.mediaDevices || Object.create(MediaDevices.prototype);
 		const b = document.body.appendChild(document.createElement("button"));
 		b.onclick = async () => {
-			try { await navigator.mediaDevices.getDisplayMedia({ video: true }); resolve("GRANTED") } catch (e) { resolve(e.name) }
+			try { await md.getDisplayMedia({ video: true }); resolve("GRANTED") } catch (e) { resolve(e.name) }
 		};
 		b.click();
 	})`)
@@ -60,7 +63,7 @@ func TestUntrustedPageCannotCaptureScreen(t *testing.T) {
 	restored, err := mygo.EvalAs[bool](v.Page(), `(() => {
 		const d = Object.getOwnPropertyDescriptor(MediaDevices.prototype, "getDisplayMedia");
 		try { Object.defineProperty(MediaDevices.prototype, "getDisplayMedia", { value: () => 1 }) } catch (e) {}
-		return d.configurable || navigator.mediaDevices.getDisplayMedia() === 1;
+		return d.configurable || MediaDevices.prototype.getDisplayMedia() === 1;
 	})()`)
 	if err != nil || restored {
 		t.Errorf("the page replaced the getDisplayMedia guard (%v, %v)", restored, err)
