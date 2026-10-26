@@ -296,6 +296,17 @@ func TestUntrustedScriptRejectsGetDisplayMedia(t *testing.T) {
 	}
 }
 
+// The script that runs in an untrusted page denies position requests itself,
+// so that a location authorization of the app is never reached.
+func TestUntrustedScriptDeniesGeolocation(t *testing.T) {
+	src := untrustedScript("secret")
+	for _, want := range []string{"getCurrentPosition", "watchPosition", "PERMISSION_DENIED", "configurable:false", "Geolocation"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the untrusted script lacks %q", want)
+		}
+	}
+}
+
 func TestUntrustedNewWindowOpensNothing(t *testing.T) {
 	var asked []string
 	_, v, fv := untrustedWebView(t, UntrustedOptions{
