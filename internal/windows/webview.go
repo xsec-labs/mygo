@@ -430,6 +430,21 @@ func navigationKind(args uintptr) int32 {
 	return kind
 }
 
+// COREWEBVIEW2_WEB_ERROR_STATUS values that navigationCompleted tells apart.
+// 13 is HOST_NAME_NOT_RESOLVED, a failure the app must hear about.
+const (
+	webErrorHostNameNotResolved = 13
+	webErrorOperationCanceled   = 14
+)
+
+// navigationFailureReported reports whether a failed navigation with this
+// status is a failure of the app's page. A cancelled one was replaced by
+// another navigation, which reports for itself, or was refused by the app
+// itself in NavigationStarting.
+func navigationFailureReported(status int32) bool {
+	return status != webErrorOperationCanceled
+}
+
 func (w *window) navigationCompleted(_, args uintptr) {
 	w.loading = false
 	var ok int32
@@ -443,7 +458,7 @@ func (w *window) navigationCompleted(_, args uintptr) {
 	}
 	var status int32
 	comCall(args, navCompletedGetWebErrorStatus, uintptr(unsafe.Pointer(&status)))
-	if status == 13 { // COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED: another navigation
+	if !navigationFailureReported(status) {
 		return
 	}
 	w.h.LoadFailed(w.URL(), int(status), "navigation failed (COREWEBVIEW2_WEB_ERROR_STATUS "+strconv.Itoa(int(status))+")")
