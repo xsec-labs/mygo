@@ -3,21 +3,29 @@
 package e2e
 
 import (
+	"sync/atomic"
 	"testing"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 const screenCapturePage = `<!doctype html><html><body></body></html>`
 
-// untrustedScreenView shows an untrusted page in a window of its own.
+// untrustedScreenView shows an untrusted page in a window of native UI.
 func untrustedScreenView(t *testing.T) *mygo.WebView {
 	t.Helper()
-	w := newWindow(t, mygo.WindowOptions{Title: "Untrusted screen capture", Width: 400, Height: 300})
+	var view atomic.Pointer[mygo.WebView]
+	w := newWindow(t, mygo.WindowOptions{Title: "Untrusted screen capture", Width: 400, Height: 300, Content: ui.View(func(c *ui.Context) {
+		if v := view.Load(); v != nil {
+			ui.WebView(c, v).Grow(1)
+		}
+	})})
 	v, err := w.NewWebView(mygo.WebViewOptions{Untrusted: &mygo.UntrustedOptions{OnMessage: func(*mygo.Page, string) {}}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	w.Update(func() { view.Store(v) })
 	v.Page().LoadHTML(screenCapturePage, "")
 	waitForPage(t, v.Page(), "document.readyState === 'complete'")
 	return v
