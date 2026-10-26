@@ -25,11 +25,11 @@ func untrustedScreenView(t *testing.T) *mygo.WebView {
 	}
 	w.Update(func() { view.Store(v) })
 	// A page of a registered scheme: a web view only exposes mediaDevices to
-	// a secure context.
+	// a secure context. Windows serves the scheme as http://app.localhost/.
 	if err := v.Page().LoadURL("app://localhost/"); err != nil {
 		t.Fatal(err)
 	}
-	waitForPage(t, v.Page(), "location.protocol === 'app:' && document.readyState === 'complete'")
+	waitForPage(t, v.Page(), "(location.protocol === 'app:' || location.hostname === 'app.localhost') && document.readyState === 'complete'")
 	return v
 }
 
