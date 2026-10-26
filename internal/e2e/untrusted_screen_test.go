@@ -40,7 +40,8 @@ func untrustedScreenView(t *testing.T) *mygo.WebView {
 func TestUntrustedPageCannotCaptureScreen(t *testing.T) {
 	v := untrustedScreenView(t)
 	if has, _ := mygo.EvalAs[bool](v.Page(), "!!(navigator.mediaDevices)"); !has {
-		t.Skip("this web view exposes no navigator.mediaDevices (a macOS process without an Info.plist): nothing to ask")
+		state, _ := mygo.EvalAs[string](v.Page(), "location.href + ' secure=' + isSecureContext")
+		t.Skipf("this web view exposes no navigator.mediaDevices (%s; a macOS process without an Info.plist has none): nothing to ask", state)
 	}
 	got, err := mygo.EvalAs[string](v.Page(), `new Promise((resolve) => {
 		const b = document.body.appendChild(document.createElement("button"));
