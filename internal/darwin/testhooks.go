@@ -998,3 +998,18 @@ func TestEndSheetButton(handle uintptr, i int) bool {
 	send(id(handle), "endSheet:returnCode:", uintptr(sheet), uintptr(nsAlertFirstButtonReturn+i))
 	return true
 }
+
+// TestScreenCaptureOfWebViews reports the screen capture preference of every
+// web view, by whether the page is untrusted. It must run on the main thread.
+func TestScreenCaptureOfWebViews() (untrusted, trusted []bool) {
+	withPool(func() {
+		for web, w := range theBackend.byWebView {
+			if w.opts.Untrusted {
+				untrusted = append(untrusted, screenCaptureEnabled(web))
+			} else {
+				trusted = append(trusted, screenCaptureEnabled(web))
+			}
+		}
+	})
+	return untrusted, trusted
+}

@@ -1,5 +1,7 @@
 package mygo
 
+import "slices"
+
 // Permission is something a page asks the user for.
 type Permission string
 
@@ -10,6 +12,10 @@ const (
 	PermissionGeolocation   Permission = "geolocation"
 	PermissionNotifications Permission = "notifications"
 )
+
+// permissionScreen is the kind a backend reports for getDisplayMedia. It is
+// not a Permission: only an untrusted page's request is reported, to be refused.
+const permissionScreen = "screen"
 
 // PermissionRequest is passed to the permission handler of a window.
 type PermissionRequest struct {
@@ -39,6 +45,12 @@ func (h *windowHandler) PermissionRequested(kinds []string, origin string) bool 
 	h.w.mu.Lock()
 	fn := h.w.permissionHandler
 	h.w.mu.Unlock()
+	if h.w.untrusted != nil && slices.Contains(kinds, permissionScreen) {
+		// Capturing the screen is the user's pick in the system's picker, not
+		// something an app can grant to a third party's page.
+		h.w.untrusted.stats.blocked.Add(1)
+		return false
+	}
 	if fn == nil {
 		if h.w.untrusted != nil {
 			// Never the origin's trust: the page is a third party's.

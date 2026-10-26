@@ -350,6 +350,23 @@ func (w *window) PlaceFlyout(f platform.Flyout, size platform.Size) {
 	msgSetRectBool(w.win, sel("setFrame:display:"), rectToMac(r), true)
 }
 
+// disableScreenCapture turns getDisplayMedia off in the preferences of an
+// untrusted web view, through the SPI of WKPreferences: there is no public
+// switch. Without the SPI the page's script is the only guard left (see
+// untrustedScript), so the miss is logged.
+func disableScreenCapture(prefs id) {
+	if !respondsTo(prefs, "_setScreenCaptureEnabled:") {
+		log.Printf("mygo: WKPreferences cannot turn off screen capture; an untrusted page can raise the screen sharing picker")
+		return
+	}
+	send(prefs, "_setScreenCaptureEnabled:", boolArg(false))
+}
+
+// screenCaptureEnabled reports the screen capture preference of a web view.
+func screenCaptureEnabled(web id) bool {
+	return sendBool(send(send(web, "configuration"), "preferences"), "_screenCaptureEnabled")
+}
+
 func (w *window) createWebView(content NSRect) {
 	o := w.opts
 	var cfg id
@@ -372,6 +389,10 @@ func (w *window) createWebView(content NSRect) {
 		// Script may not read or write the clipboard without the user.
 		send(prefs, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("javaScriptCanAccessClipboard")))
 		send(prefs, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("DOMPasteAllowed")))
+		// getDisplayMedia raises the system's screen sharing picker, where
+		// whoever picks a source hands the page the screen. WebKit never asks
+		// the delegate for that, so the page must not get to ask at all.
+		disableScreenCapture(prefs)
 	}
 	// Tab reaches buttons, links and the other controls too, as it does in
 	// Chrome, Electron and WebView2, whatever the system's keyboard

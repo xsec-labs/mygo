@@ -264,6 +264,38 @@ func TestUntrustedPermissionsDeniedByDefault(t *testing.T) {
 	}
 }
 
+// Screen capture is the user's pick in the system's picker: a backend that
+// reports it for an untrusted page gets a refusal even from an app handler
+// that grants everything, and the refusal is counted.
+func TestUntrustedScreenCaptureNeverGranted(t *testing.T) {
+	_, v, fv := untrustedWebView(t, UntrustedOptions{OnMessage: func(*Page, string) {}})
+	ask := func() bool {
+		return onMainValue(func() bool { return fv.Window.H.PermissionRequested([]string{"screen"}, "xsec-plugin://example") })
+	}
+	if ask() {
+		t.Error("screen capture granted by default")
+	}
+	v.Page().SetPermissionHandler(func(PermissionRequest) bool { return true })
+	if ask() {
+		t.Error("the app's permission handler granted screen capture to an untrusted page")
+	}
+	st, _ := v.Page().UntrustedStats()
+	if st.Blocked != 2 {
+		t.Errorf("blocked = %d", st.Blocked)
+	}
+}
+
+// The script that runs in an untrusted page, where the backend has no switch
+// for screen capture, makes getDisplayMedia reject before the page can use it.
+func TestUntrustedScriptRejectsGetDisplayMedia(t *testing.T) {
+	src := untrustedScript("secret")
+	for _, want := range []string{"getDisplayMedia", "NotAllowedError", "configurable:false", "MediaDevices"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the untrusted script lacks %q", want)
+		}
+	}
+}
+
 func TestUntrustedNewWindowOpensNothing(t *testing.T) {
 	var asked []string
 	_, v, fv := untrustedWebView(t, UntrustedOptions{
