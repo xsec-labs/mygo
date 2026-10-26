@@ -35,6 +35,23 @@ pointer through to what is below.
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.
 
+`Wheeled(mods)` returns how far the wheel (or a touchpad) turned over the
+element since the last frame, in the element's own axes, while exactly the
+modifier keys `mods` were held: `Wheeled(ui.Ctrl)` is Ctrl+wheel, as a
+zoom, and `Wheeled(0)` the wheel on its own. An element asking takes those
+notches, so the scroll containers around it do not scroll with them, and
+they still scroll with the other combinations. A touchpad pinch is not a
+wheel with Ctrl on Windows and the web: it arrives as `InputZoom` in
+`HandleInput`, so a zoom canvas reads both. The innermost element asking
+for a combination takes it, and `HandleInput` still sees the wheel first.
+`Tester.WheelWith(mods, x, y, dx, dy)` turns the wheel with keys held.
+
+```go
+if _, dy, ok := canvas.Wheeled(ui.Ctrl); ok {
+	zoom *= math.Pow(1.0015, float64(-dy))
+}
+```
+
 `Pressed` stays true while the pointer is held inside the element. Observing
 the start of a press rebuilds the view before painting, so a row chosen by
 `if row.Pressed() || row.Clicked()` shows its new selection and focus colors

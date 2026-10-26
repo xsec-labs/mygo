@@ -532,6 +532,11 @@ type state struct {
 	webView NativeWebView
 
 	clicks, rightClicks, doubleClicks int
+	// wheelMods are the modifier combinations the element takes the wheel
+	// with (node.wheelMods), and wheeled the notches it took since the
+	// last frame.
+	wheelMods uint16
+	wheeled   *wheelTake
 	// pressMods are the modifiers held as the pointer went down on the
 	// element, and clickMods those of its last click.
 	pressMods, clickMods Modifiers

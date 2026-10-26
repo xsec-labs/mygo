@@ -271,6 +271,9 @@ type node struct {
 	st         *state
 	// track is the ScrollState of a scroll container (TrackScroll).
 	track *ScrollState
+	// wheelMods are the modifier combinations the element asked to take
+	// the wheel with (Wheeled): bit m for the combination m.
+	wheelMods uint16
 
 	// layoutStyle holds what lays the element out, and cols and rows
 	// the tracks of a grid.

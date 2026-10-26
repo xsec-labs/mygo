@@ -5769,6 +5769,24 @@ func (_handle Element) WavyUnderline() Element {
 	return wrapElement(_node.WavyUnderline())
 }
 
+// Wheeled returns how far the mouse wheel or a touchpad turned over the
+// element since the last frame, in the element's own axes as the wheel
+// reports it, while exactly the modifier keys mods were held: Wheeled(Ctrl)
+// reads Ctrl+wheel, Wheeled(0) the wheel on its own. ok tells that it
+// turned. An element asking takes those notches, so that the scroll
+// containers around it do not scroll with them; the others still scroll.
+// The innermost element asking for a combination takes it, and one that is
+// disabled takes none. HandleInput sees the wheel before this does.
+func (_handle Element) Wheeled(mods Modifiers) (float32, float32, bool) {
+	_node := _handle.node()
+	if _node == nil {
+		return 0, 0, false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.Wheeled(mods)
+}
+
 // Width sets the width in DIPs.
 func (_handle Element) Width(v float32) Element {
 	_node := _handle.node()
