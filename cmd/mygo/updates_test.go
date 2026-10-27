@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/internal/update"
 )
@@ -351,6 +353,35 @@ func TestWriteDeltas(t *testing.T) {
 		if err := json.Unmarshal(data, &m); err != nil {
 			t.Fatal(err)
 		}
+		// The signatures cover the version, and the app and the target the
+		// app is built with (the flags of its build): the archive's, and
+		// each delta's, which also covers where it is made from.
+		flags := updateFlags(c, "linux-amd64")
+		appName, target := flagValue(t, flags, "packageUpdateApp"), flagValue(t, flags, "packageUpdateTarget")
+		archive, err := os.ReadFile(filepath.Join(stage, filepath.Base(m.URL)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(archive)
+		if err := update.VerifyBound(pub, update.KindArchive, appName, target, "1.2.0", "", sum[:], m.Bound); err != nil {
+			t.Errorf("the archive's bound signature: %v", err)
+		}
+		if err := update.Verify(pub, sum[:], m.Signature); err != nil {
+			t.Errorf("the archive's signature for apps from before versions were signed: %v", err)
+		}
+		for _, d := range m.Deltas {
+			data, err := os.ReadFile(filepath.Join(stage, filepath.Base(d.URL)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha256.Sum256(data)
+			if err := update.VerifyBound(pub, update.KindDelta, appName, target, "1.2.0", d.From, sum[:], d.Bound); err != nil {
+				t.Errorf("the delta from %s: bound signature: %v", d.From, err)
+			}
+			if update.VerifyBound(pub, update.KindDelta, appName, target, "1.2.0", "1.0.5", sum[:], d.Bound) == nil {
+				t.Errorf("the delta from %s: its signature stands for another version to start from", d.From)
+			}
+		}
 		// Each delta makes the new version of the old.
 		for _, d := range m.Deltas {
 			old := filepath.Join(t.TempDir(), "old")
@@ -450,5 +481,44 @@ func TestPublishGitHub(t *testing.T) {
 	b, _ = os.ReadFile(calls)
 	if lines := strings.Split(strings.TrimSpace(string(b)), "\n"); len(lines) != 4 || !strings.HasPrefix(lines[1], "release create desktop-v1.2.0 --repo me/app --draft") || !strings.HasSuffix(lines[1], " --latest=false") {
 		t.Errorf("gh calls:\n%s", b)
+	}
+}
+
+// flagValue returns what the -ldflags set the variable name of package mygo
+// to.
+func flagValue(t *testing.T, flags, name string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(flags, "mygo."+name+"=")
+	if !ok {
+		t.Fatalf("flags %q do not set %s", flags, name)
+	}
+	v, _, _ := strings.Cut(rest, " ")
+	return strings.Trim(v, `'"`)
+}
+
+// The apps are built with the name and target their signatures cover, and
+// with the switch to accept updates signed without a version, for a while
+// only, when asked.
+func TestUpdateFlagsCarryApp(t *testing.T) {
+	c := &Config{Name: "My App", Version: "1.2.0", Updates: &Updates{PublicKey: "key", URL: "https://example.com/app"}}
+	flags := updateFlags(c, "darwin-arm64")
+	if got := flagValue(t, flags, "packageUpdateTarget"); got != "darwin-arm64" {
+		t.Errorf("target %q", got)
+	}
+	if got := flagValue(t, flags, "packageUpdateApp"); got != c.updateApp() || got == "" {
+		t.Errorf("app %q, want %q", got, c.updateApp())
+	}
+	if strings.Contains(flags, "packageUpdateUnbound") {
+		t.Errorf("flags %q accept unbound signatures by default", flags)
+	}
+	c.Updates.UnboundSignatures = true
+	before := time.Now()
+	flags = updateFlags(c, "linux-amd64")
+	until, err := strconv.ParseInt(flagValue(t, flags, "packageUpdateUnboundUntil"), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Unix(until, 0).Sub(before); d < unboundWindow-time.Minute || d > unboundWindow+time.Minute {
+		t.Errorf("unbound signatures are accepted for %v, want %v", d, unboundWindow)
 	}
 }

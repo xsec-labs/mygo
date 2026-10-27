@@ -105,6 +105,7 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 | `privateKey` | | the path of `mygo-update.key`, for `mygo build`; the `MYGO_UPDATER_PRIVATE_KEY` environment variable, holding the key, takes precedence |
 | `changelog` | `CHANGELOG.md` when it exists | a Markdown file whose `## <version>` section becomes the release notes |
 | `deltas` | `3` | how many earlier versions get a [delta update](updates.md#delta-updates); `0` for none |
+| `unboundSignatures` | `false` | make the app accept updates signed without their version, as [builds before the signature covered it](updates.md#changing-over) made them, for 90 days after it was built; only for the build of the changeover |
 
 ## macos
 

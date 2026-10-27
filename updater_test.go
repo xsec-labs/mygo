@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,12 +24,36 @@ import (
 	"github.com/egoist/mygo/internal/update"
 )
 
+const (
+	testApp    = "test-app"
+	testTarget = "test-os-test-arch"
+)
+
+// setUpdateTarget sets the target the app is built for and until when it
+// accepts updates signed without their version (a Unix time in seconds, ""
+// for never), until the test ends.
+func setUpdateTarget(t *testing.T, target, unboundUntil string) {
+	t.Helper()
+	oldApp, oldTarget, oldUntil := packageUpdateApp, packageUpdateTarget, packageUpdateUnboundUntil
+	packageUpdateApp, packageUpdateTarget, packageUpdateUnboundUntil = testApp, target, unboundUntil
+	t.Cleanup(func() {
+		packageUpdateApp, packageUpdateTarget, packageUpdateUnboundUntil = oldApp, oldTarget, oldUntil
+	})
+}
+
+// unboundFor returns what packageUpdateUnboundUntil is for an app that
+// accepts updates signed without their version until d from now.
+func unboundFor(d time.Duration) string {
+	return strconv.FormatInt(time.Now().Add(d).Unix(), 10)
+}
+
 // updateServer serves a signed update whose app holds main with content,
 // and with deltaFrom, a delta of it from that version of installedApp.
 // requests counts the requests of each file.
 func updateServer(t *testing.T, version, content, deltaFrom string) (srv *httptest.Server, key string, m update.Manifest, requests func(string) int) {
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(nil)
+	setUpdateTarget(t, testTarget, "")
 	src := t.TempDir()
 	app := "app"
 	if runtime.GOOS == "darwin" {
@@ -57,7 +82,8 @@ func updateServer(t *testing.T, version, content, deltaFrom string) (srv *httpte
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(archive.Bytes())
-	m = update.Manifest{Version: version, Notes: "- Faster", Date: "2026-09-27T10:00:00Z", Size: int64(archive.Len()), Signature: update.Sign(priv, sum[:])}
+	bound, _ := update.SignBound(priv, update.KindArchive, testApp, testTarget, version, "", sum[:])
+	m = update.Manifest{Version: version, Notes: "- Faster", Date: "2026-09-27T10:00:00Z", Size: int64(archive.Len()), Signature: update.Sign(priv, sum[:]), Bound: bound}
 	var mu sync.Mutex
 	counts := map[string]int{}
 	mux := http.NewServeMux()
@@ -80,7 +106,8 @@ func updateServer(t *testing.T, version, content, deltaFrom string) (srv *httpte
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(delta.Bytes())
-		m.Deltas = []update.Delta{{From: deltaFrom, URL: srv.URL + "/app.delta", Size: int64(delta.Len()), Signature: update.Sign(priv, sum[:])}}
+		bound, _ := update.SignBound(priv, update.KindDelta, testApp, testTarget, version, deltaFrom, sum[:])
+		m.Deltas = []update.Delta{{From: deltaFrom, URL: srv.URL + "/app.delta", Size: int64(delta.Len()), Signature: update.Sign(priv, sum[:]), Bound: bound}}
 		mux.HandleFunc("/app.delta", func(w http.ResponseWriter, r *http.Request) { w.Write(delta.Bytes()) })
 	}
 	mux.HandleFunc("/update.json", func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(m) })
@@ -170,7 +197,7 @@ func TestUpdater(t *testing.T) {
 	// changes nothing.
 	target, main = installedApp(t)
 	bad := up.manifest
-	bad.Signature = base64.StdEncoding.EncodeToString(make([]byte, 64))
+	bad.Bound = base64.StdEncoding.EncodeToString(make([]byte, 64))
 	if err := installUpdate(ctx, bad, key, up.current, target, nil); err == nil || !strings.Contains(err.Error(), "signed") {
 		t.Errorf("bad signature: %v", err)
 	}
@@ -246,9 +273,182 @@ func TestUpdaterDelta(t *testing.T) {
 	}
 	unsigned := up.manifest
 	unsigned.Deltas = []update.Delta{delta}
-	unsigned.Deltas[0].Signature = m.Signature
+	unsigned.Deltas[0].Bound = m.Bound
 	install(unsigned, up.current, false)
 	if requests("/app.delta") != 3 || requests("/app.tar.gz") != 3 {
+		t.Errorf("downloaded the delta %d times and the archive %d", requests("/app.delta"), requests("/app.tar.gz"))
+	}
+}
+
+// The signature covers the version and the target, so a manifest served by
+// someone else cannot pair a release signed by the publisher with a newer
+// version, another target, or another kind of file.
+func TestUpdaterSignatureCoversVersion(t *testing.T) {
+	ctx := context.Background()
+	srv, key, _, _ := updateServer(t, "1.2.0", "v2", "1.1.9")
+	up, err := checkUpdate(ctx, srv.URL+"/update.json", key, "1.1.9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := func(name string, m update.Manifest, current string) {
+		t.Helper()
+		target, main := installedApp(t)
+		if err := installUpdate(ctx, m, key, current, target, nil); err == nil {
+			t.Errorf("%s: installed", name)
+		}
+		if b, _ := os.ReadFile(main); string(b) != "v1" {
+			t.Errorf("%s: a refused update changed main to %q", name, b)
+		}
+	}
+
+	// The old release, validly signed, published as a newer version.
+	newer := up.manifest
+	newer.Version = "9.9.9"
+	newer.Deltas = nil
+	refused("the archive as 9.9.9", newer, "1.1.9")
+	older := up.manifest
+	older.Version = "1.0.1"
+	older.Deltas = nil
+	refused("the archive as 1.0.1", older, "1.0.0")
+	// The same for a delta: its version, and the version it is made from.
+	newerDelta := up.manifest
+	newerDelta.Version = "9.9.9"
+	refused("the delta as 9.9.9", newerDelta, "1.1.9")
+	// The signature of the archive does not stand for a delta, nor the
+	// other way: a delta whose signature is the archive's is refused and
+	// the archive installed instead (TestUpdaterDelta), and an archive with
+	// the delta's is refused.
+	swapped := up.manifest
+	swapped.Bound = up.manifest.Deltas[0].Bound
+	swapped.Deltas = nil
+	refused("the archive with the delta's signature", swapped, "1.1.9")
+	// Another target.
+	setUpdateTarget(t, "other-os-other-arch", "")
+	refused("an archive of another target", up.manifest, "1.1.9")
+	setUpdateTarget(t, testTarget, "")
+
+	// Without a bound signature, as an older mygo build published it, the
+	// update is refused, also when the signature that is left is good.
+	stripped := up.manifest
+	stripped.Bound = ""
+	stripped.Deltas = nil
+	refused("an update without a bound signature", stripped, "1.1.9")
+	strippedDelta := up.manifest
+	strippedDelta.Bound = "x"
+	strippedDelta.Deltas = []update.Delta{up.manifest.Deltas[0]}
+	strippedDelta.Deltas[0].Bound = ""
+	refused("a delta without a bound signature and an archive with a bad one", strippedDelta, "1.1.9")
+
+	// The app built for the changeover accepts it, and only it: a bound
+	// signature that is there is still checked.
+	setUpdateTarget(t, testTarget, unboundFor(time.Hour))
+	target, main := installedApp(t)
+	if err := installUpdate(ctx, stripped, key, "1.1.9", target, nil); err != nil {
+		t.Errorf("an update without a bound signature, for an app that accepts it: %v", err)
+	} else if b, _ := os.ReadFile(main); string(b) != "v2" {
+		t.Errorf("after the update main = %q", b)
+	}
+	newer.Bound = up.manifest.Bound
+	refused("a bound signature of another version, for an app that accepts none", newer, "1.1.9")
+}
+
+// One key can sign several apps: a release of another app is not an update.
+func TestUpdaterSignatureCoversApp(t *testing.T) {
+	ctx := context.Background()
+	srv, key, _, _ := updateServer(t, "1.2.0", "v2", "")
+	up, err := checkUpdate(ctx, srv.URL+"/update.json", key, "1.1.9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageUpdateApp = "another-app"
+	target, main := installedApp(t)
+	if err := installUpdate(ctx, up.manifest, key, "1.1.9", target, nil); err == nil || !strings.Contains(err.Error(), "signed") {
+		t.Errorf("an update signed for another app: %v", err)
+	}
+	if b, _ := os.ReadFile(main); string(b) != "v1" {
+		t.Errorf("a refused update changed main to %q", b)
+	}
+}
+
+// An app built to accept unbound signatures accepts them for a while only.
+func TestUpdaterUnboundWindow(t *testing.T) {
+	ctx := context.Background()
+	srv, key, _, _ := updateServer(t, "1.2.0", "v2", "")
+	up, err := checkUpdate(ctx, srv.URL+"/update.json", key, "1.1.9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stripped := up.manifest
+	stripped.Bound = ""
+	stripped.Deltas = nil
+	for name, until := range map[string]string{
+		"the window ran out": unboundFor(-time.Minute),
+		"an unreadable time": "soon",
+		"no window":          "",
+	} {
+		setUpdateTarget(t, testTarget, until)
+		target, main := installedApp(t)
+		if err := installUpdate(ctx, stripped, key, "1.1.9", target, nil); err == nil {
+			t.Errorf("%s: an update without a bound signature was installed", name)
+		}
+		if b, _ := os.ReadFile(main); string(b) != "v1" {
+			t.Errorf("%s: a refused update changed main to %q", name, b)
+		}
+	}
+	setUpdateTarget(t, testTarget, unboundFor(time.Minute))
+	target, _ := installedApp(t)
+	if err := installUpdate(ctx, stripped, key, "1.1.9", target, nil); err != nil {
+		t.Errorf("within the window: %v", err)
+	}
+}
+
+// A delta's signature covers the version it starts from: with a valid delta
+// and archive, a label of another starting version alone is refused by the
+// signature (applyDelta, not the delta's own index or the archive that
+// would follow).
+func TestUpdaterDeltaSignatureCoversFrom(t *testing.T) {
+	ctx := context.Background()
+	srv, key, _, requests := updateServer(t, "1.2.0", "v2, a bigger version", "1.1.9")
+	up, err := checkUpdate(ctx, srv.URL+"/update.json", key, "1.1.9")
+	if err != nil || len(up.manifest.Deltas) != 1 {
+		t.Fatalf("checkUpdate = %+v, %v", up, err)
+	}
+	pub, err := update.ParsePublicKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := up.manifest.Deltas[0]
+	apply := func(from string) error {
+		target, _ := installedApp(t)
+		work := t.TempDir()
+		check := signatureCheck(pub, update.KindDelta, "1.2.0", from, d.Signature, d.Bound)
+		return applyDelta(ctx, d, check, "1.2.0", target, work, filepath.Join(work, "app"), nil)
+	}
+	if err := apply("1.1.9"); err != nil {
+		t.Fatalf("the delta with its own starting version: %v", err)
+	}
+	if err := apply("1.1.8"); err == nil || !strings.Contains(err.Error(), "signed") {
+		t.Errorf("the delta labeled as made from another version: %v", err)
+	}
+	if requests("/app.delta") != 2 {
+		t.Errorf("downloaded the delta %d times", requests("/app.delta"))
+	}
+
+	// An app that accepts unbound signatures takes a delta without one as
+	// the delta, not by falling back to the archive.
+	setUpdateTarget(t, testTarget, unboundFor(time.Hour))
+	unbound := up.manifest
+	unbound.Bound = ""
+	unbound.Deltas = []update.Delta{d}
+	unbound.Deltas[0].Bound = ""
+	target, main := installedApp(t)
+	if err := installUpdate(ctx, unbound, key, "1.1.9", target, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(main); string(b) != "v2, a bigger version" {
+		t.Errorf("after the update main = %q", b)
+	}
+	if requests("/app.delta") != 3 || requests("/app.tar.gz") != 0 {
 		t.Errorf("downloaded the delta %d times and the archive %d", requests("/app.delta"), requests("/app.tar.gz"))
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -32,6 +33,11 @@ type Manifest struct {
 	URL       string `json:"url"`
 	Size      int64  `json:"size"`
 	Signature string `json:"signature"`
+	// Bound is the Ed25519 signature that also covers the target and the
+	// version (SignBound), which Signature does not: whoever serves the
+	// manifest could pair an old archive with a newer version. Apps check
+	// it and ignore Signature, which only apps from before it check.
+	Bound string `json:"bound,omitempty"`
 	// Deltas update earlier versions with smaller downloads (delta.go).
 	Deltas []Delta `json:"deltas,omitempty"`
 	// Previous are the archives of the versions before, newest first,
@@ -46,6 +52,9 @@ type Delta struct {
 	URL       string `json:"url"`
 	Size      int64  `json:"size"`
 	Signature string `json:"signature"`
+	// Bound is the signature that covers the versions too, as the
+	// manifest's.
+	Bound string `json:"bound,omitempty"`
 }
 
 // Archive is the archive of an earlier version.
@@ -106,6 +115,54 @@ func Verify(key ed25519.PublicKey, digest []byte, signature string) error {
 	sig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil || !ed25519.Verify(key, digest, sig) {
 		return errors.New("the update is not signed with the app's key")
+	}
+	return nil
+}
+
+// Kinds of files that SignBound signs, which a signature of one is not
+// valid for another.
+const (
+	KindArchive = "archive"
+	KindDelta   = "delta"
+)
+
+// boundMessage returns what a bound signature signs: the kind of file, the
+// app (its executable's name, so that one key can sign several apps), the
+// target the app is built for (such as darwin-arm64), the version the file
+// makes, the version it is made from (a delta's, else empty) and the SHA-256
+// digest of the file, each field delimited so that none can pass for part
+// of another.
+func boundMessage(kind, app, target, version, from string, digest []byte) ([]byte, error) {
+	for _, f := range []string{kind, app, target, version, from} {
+		if strings.ContainsRune(f, 0) {
+			return nil, errors.New("invalid field of an update signature")
+		}
+	}
+	if len(digest) != sha256.Size {
+		return nil, errors.New("invalid digest")
+	}
+	msg := "mygo-update-v2\x00" + kind + "\x00" + app + "\x00" + target + "\x00" + version + "\x00" + from + "\x00"
+	return append([]byte(msg), digest...), nil
+}
+
+// SignBound signs the SHA-256 digest of an update file together with its
+// kind, the app, the target, the version it makes and, for a delta, the
+// version it is made from, so that a signed file cannot be published as
+// another version, for another target or for another app of the same key.
+func SignBound(key ed25519.PrivateKey, kind, app, target, version, from string, digest []byte) (string, error) {
+	msg, err := boundMessage(kind, app, target, version, from, digest)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(key, msg)), nil
+}
+
+// VerifyBound checks a signature of SignBound.
+func VerifyBound(key ed25519.PublicKey, kind, app, target, version, from string, digest []byte, signature string) error {
+	msg, err := boundMessage(kind, app, target, version, from, digest)
+	sig, serr := base64.StdEncoding.DecodeString(signature)
+	if err != nil || serr != nil || !ed25519.Verify(key, msg, sig) {
+		return errors.New("the update is not signed with the app's key for this version")
 	}
 	return nil
 }

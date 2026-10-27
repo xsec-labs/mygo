@@ -77,7 +77,7 @@ Next to the installers of each platform it writes:
 - [delta updates](#delta-updates) from the versions before, such as
   `my-app-1.1.0-to-1.2.0-darwin-arm64.delta`, and
 - `update-darwin-arm64.json`, the manifest: the version, its release
-  notes, the date, and the URL, size and signature of the archive and of
+  notes, the date, and the URL, size and signatures of the archive and of
   each delta.
 
 Without a key, `mygo build` builds the apps and skips the update files,
@@ -142,6 +142,42 @@ uploaded with `Cache-Control: no-cache`, so a CDN checks them again.
 The bucket is named in the host name of requests on Amazon S3 and in their
 path with `endpoint`; set `pathStyle` to `false` for services that only
 take it in the host name, or to `true` to force the path.
+
+## What the signature covers
+
+The manifest is served over HTTPS but not signed itself, so each file of an
+update carries a signature over its contents *and* what the manifest says
+about it: that it is an archive or a delta, the app (the executable's name),
+the target it is built for (`darwin-arm64`), the version it makes and, for a
+delta, the version it is made from (`bound` in the manifest). An app checks
+that one, so whoever serves the manifest cannot publish an older release,
+which is signed too, as a newer version, nor one platform's archive for
+another's, nor another app's of the same key. Apps also update only to a
+version newer than their own.
+
+What it does not give: the manifest itself is not signed, so whoever serves
+it can still offer any older release you signed that is newer than the app,
+which withholds a later fix (a freeze, not a downgrade), and can change the
+notes and the date the update window shows.
+
+### Changing over
+
+Builds from before this signed only the contents of a file. `mygo build`
+still writes that signature (`signature`) next to the bound one, so apps
+that old keep updating, but they check nothing else: until they reach a
+build with bound signatures they can be given an old release as a newer
+version, and that is the case for every app you have shipped. Ship a build
+of this one as soon as you can, and stop writing the old signature (change
+the key) once the apps in use are past it.
+
+The app you build now takes no update without a bound signature, that is
+none built with an older `mygo build`. To publish a release made with an
+older build to apps of this one, set `updates.unboundSignatures` for the
+build of the changeover. It is an exception: that build accepts updates
+without a version in their signature for 90 days after it was built, and
+for as long as it does, whoever serves the manifest can publish an old
+release to it as a newer version, so replace it with a build without the
+switch before then. `mygo build` warns when it is set.
 
 ## Delta updates
 

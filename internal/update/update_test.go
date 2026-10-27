@@ -122,3 +122,45 @@ func TestReleaseNotes(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundSignatures(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	digest := sha256.Sum256([]byte("archive"))
+	sig, err := SignBound(priv, KindArchive, "app", "darwin-arm64", "1.2.0", "", digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "", digest[:], sig); err != nil {
+		t.Fatalf("a good signature: %v", err)
+	}
+	other := sha256.Sum256([]byte("other"))
+	for name, check := range map[string]error{
+		"another version": VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.1", "", digest[:], sig),
+		"another app":     VerifyBound(pub, KindArchive, "other-app", "darwin-arm64", "1.2.0", "", digest[:], sig),
+		"another target":  VerifyBound(pub, KindArchive, "app", "darwin-amd64", "1.2.0", "", digest[:], sig),
+		"another kind":    VerifyBound(pub, KindDelta, "app", "darwin-arm64", "1.2.0", "", digest[:], sig),
+		"a from version":  VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "1.1.0", digest[:], sig),
+		"another digest":  VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "", other[:], sig),
+		"not base64":      VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "", digest[:], "%%%"),
+		"a short digest":  VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "", digest[:8], sig),
+	} {
+		if check == nil {
+			t.Errorf("%s: verified", name)
+		}
+	}
+	// Fields cannot run into one another: moving the delimiter between
+	// target and version signs another message.
+	if err := VerifyBound(pub, KindArchive, "app", "darwin-arm64\x001.2.0", "", "", digest[:], sig); err == nil {
+		t.Error("a field holding NUL verified")
+	}
+	if _, err := SignBound(priv, KindArchive, "app", "darwin-arm64", "1.2.0\x00", "", digest[:]); err == nil {
+		t.Error("signed a version holding NUL")
+	}
+	// Neither form stands for the other.
+	if err := Verify(pub, digest[:], sig); err == nil {
+		t.Error("a bound signature verified as a signature of the digest")
+	}
+	if err := VerifyBound(pub, KindArchive, "app", "darwin-arm64", "1.2.0", "", digest[:], Sign(priv, digest[:])); err == nil {
+		t.Error("a signature of the digest verified as a bound one")
+	}
+}
