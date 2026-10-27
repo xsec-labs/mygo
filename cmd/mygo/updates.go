@@ -55,11 +55,20 @@ type Updates struct {
 	// download holding only what changed (default 3, 0 for none).
 	Deltas *int `json:"deltas"`
 	// UnboundSignatures makes the app accept updates whose signature covers
-	// no version, as `mygo build` made before it signed versions: anyone who
-	// serves the manifest can then publish an old release as a newer
-	// version. Only for the releases of the changeover; default false.
+	// no version, as `mygo build` made before it signed versions, for 90
+	// days after it was built: anyone who serves the manifest can publish an
+	// old release as a newer version to it. Only for the releases of the
+	// changeover; default false.
 	UnboundSignatures bool `json:"unboundSignatures"`
 }
+
+// unboundWindow is how long an app built with updates.unboundSignatures
+// accepts updates whose signature covers no version.
+const unboundWindow = 90 * 24 * time.Hour
+
+// updateApp returns the name that the signatures of an update cover as the
+// app's, so that one key can sign several apps.
+func (c *Config) updateApp() string { return slugify(c.executableName()) }
 
 // deltas returns how many earlier versions get a delta update.
 func (u *Updates) deltas() int {
@@ -141,9 +150,12 @@ func updateFlags(c *Config, target string) string {
 	}
 	flags := " -X " + ldflagsQuote("github.com/egoist/mygo.packageUpdateFeed="+c.updateFeed(target)) +
 		" -X github.com/egoist/mygo.packageUpdateKey=" + c.Updates.PublicKey +
+		" -X " + ldflagsQuote("github.com/egoist/mygo.packageUpdateApp="+c.updateApp()) +
 		" -X " + ldflagsQuote("github.com/egoist/mygo.packageUpdateTarget="+target)
 	if c.Updates.UnboundSignatures {
-		flags += " -X github.com/egoist/mygo.packageUpdateUnbound=1"
+		until := time.Now().Add(unboundWindow)
+		warnf("updates.unboundSignatures: this build accepts updates whose signature covers no version until %s; whoever serves the manifest can publish an old release as a newer version to it until then. Release a build without it as soon as the apps have updated", until.Format(time.DateOnly))
+		flags += " -X github.com/egoist/mygo.packageUpdateUnboundUntil=" + strconv.FormatInt(until.Unix(), 10)
 	}
 	return flags
 }
@@ -234,7 +246,7 @@ func writeArchive(c *Config, stage, target string, entries []string) ([]string, 
 	if key == nil {
 		return []string{archive}, nil
 	}
-	sig, bound, err := signFile(key, update.KindArchive, target, c.Version, "", digest)
+	sig, bound, err := signFile(key, update.KindArchive, c.updateApp(), target, c.Version, "", digest)
 	if err != nil {
 		return nil, err
 	}
@@ -289,11 +301,11 @@ func writeSigned(path string, key ed25519.PrivateKey, write func(io.Writer) erro
 }
 
 // signFile signs the digest of a file of an update of kind that makes
-// version for target (from the version from, for a delta) two ways: with
-// the signature of apps from before versions were signed, and the bound
-// signature that covers kind, target, version and from.
-func signFile(key ed25519.PrivateKey, kind, target, version, from string, digest []byte) (legacy, bound string, err error) {
-	bound, err = update.SignBound(key, kind, target, version, from, digest)
+// version for app and target (from the version from, for a delta) two ways:
+// with the signature of apps from before versions were signed, and the bound
+// signature that covers kind, app, target, version and from.
+func signFile(key ed25519.PrivateKey, kind, app, target, version, from string, digest []byte) (legacy, bound string, err error) {
+	bound, err = update.SignBound(key, kind, app, target, version, from, digest)
 	return update.Sign(key, digest), bound, err
 }
 
@@ -340,7 +352,7 @@ func writeDeltas(c *Config, key ed25519.PrivateKey, stage, target string, entrie
 	for i, base := range bases {
 		name := slugify(c.executableName()) + "-" + base.Version + "-to-" + c.Version + "-" + target + ".delta"
 		path := filepath.Join(stage, name)
-		d, err := writeDelta(key, base, filepath.Join(work, strconv.Itoa(i)), path, target, c.Version, newDir, newEntries)
+		d, err := writeDelta(key, base, filepath.Join(work, strconv.Itoa(i)), path, c.updateApp(), target, c.Version, newDir, newEntries)
 		switch {
 		case err != nil:
 			warnf("No delta update from %s for %s: %v", base.Version, target, err)
@@ -360,8 +372,8 @@ func writeDeltas(c *Config, key ed25519.PrivateKey, stage, target string, entrie
 
 // writeDelta downloads the archive of base into work, checks that it is
 // signed with key, and writes the delta from it to the app of version in
-// newDir for target to path.
-func writeDelta(key ed25519.PrivateKey, base update.Archive, work, path, target, version, newDir string, newEntries []string) (update.Delta, error) {
+// newDir for app and target to path.
+func writeDelta(key ed25519.PrivateKey, base update.Archive, work, path, app, target, version, newDir string, newEntries []string) (update.Delta, error) {
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return update.Delta{}, err
 	}
@@ -393,7 +405,7 @@ func writeDelta(key ed25519.PrivateKey, base update.Archive, work, path, target,
 		os.Remove(path)
 		return update.Delta{}, err
 	}
-	sig, bound, err := signFile(key, update.KindDelta, target, version, base.Version, digest)
+	sig, bound, err := signFile(key, update.KindDelta, app, target, version, base.Version, digest)
 	if err != nil {
 		os.Remove(path)
 		return update.Delta{}, err

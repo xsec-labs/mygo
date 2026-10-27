@@ -32,12 +32,14 @@ import (
 var (
 	packageUpdateFeed string
 	packageUpdateKey  string
-	// packageUpdateTarget is the target the app is built for, such as
-	// darwin-arm64, which bound signatures cover; packageUpdateUnbound,
-	// "1" for an app that still accepts updates whose signature covers no
-	// version (updates.unboundSignatures).
-	packageUpdateTarget  string
-	packageUpdateUnbound string
+	// packageUpdateApp and packageUpdateTarget are the app (its executable's
+	// name) and the target it is built for, such as darwin-arm64, which
+	// bound signatures cover. packageUpdateUnboundUntil, a Unix time in
+	// seconds, is until when an app still accepts updates whose signature
+	// covers no version (updates.unboundSignatures); empty for never.
+	packageUpdateApp          string
+	packageUpdateTarget       string
+	packageUpdateUnboundUntil string
 )
 
 // startExe is the executable the app started from. On Linux, os.Executable
@@ -283,22 +285,30 @@ func download(ctx context.Context, url string, size int64, check func(digest []b
 	return check(sum.Sum(nil))
 }
 
+// unboundAccepted reports whether the app still accepts updates whose
+// signature covers no version at now: it was built with
+// updates.unboundSignatures, and its time to accept them has not run out.
+func unboundAccepted(now time.Time) bool {
+	until, err := strconv.ParseInt(packageUpdateUnboundUntil, 10, 64)
+	return err == nil && now.Unix() <= until
+}
+
 // signatureCheck returns the check of the digest of an update file of kind
 // that makes version (from the version from, for a delta): its bound
-// signature, which covers the version and the app's target, so that a file
-// signed for one version cannot be published as a newer one. An update
+// signature, which covers the version, the app and its target, so that a
+// file signed for one version cannot be published as a newer one. An update
 // without one, as `mygo build` of before it made, is refused unless the
-// app was built to accept it (updates.unboundSignatures); where there is
-// one, the signature that covers no version is never looked at.
+// app was built to accept it for a while (updates.unboundSignatures); where
+// there is one, the signature that covers no version is never looked at.
 func signatureCheck(pub ed25519.PublicKey, kind, version, from, legacy, bound string) func(digest []byte) error {
 	return func(digest []byte) error {
 		switch {
 		case bound != "":
-			return update.VerifyBound(pub, kind, packageUpdateTarget, version, from, digest, bound)
-		case packageUpdateUnbound == "1":
+			return update.VerifyBound(pub, kind, packageUpdateApp, packageUpdateTarget, version, from, digest, bound)
+		case unboundAccepted(time.Now()):
 			return update.Verify(pub, digest, legacy)
 		}
-		return errors.New("the update's signature does not cover its version: publish it with a newer mygo build, or build the app with updates.unboundSignatures")
+		return errors.New("the update's signature does not cover its version: publish it with a newer mygo build (an app built with updates.unboundSignatures accepts one only until the time it was built to)")
 	}
 }
 
