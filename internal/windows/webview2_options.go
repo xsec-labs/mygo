@@ -36,7 +36,12 @@ type envOptions struct {
 // and the navigation policy do not see: for an untrusted page it is a way out
 // for data. disable_non_proxied_udp lets WebRTC use no UDP but through a
 // proxy, so the web views of this fork have no direct peer connections.
-const browserArguments = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"
+//
+// The switch that holds is --webrtc-ip-handling-policy: on WebView2 runtime
+// 142 the Chromium switch --force-webrtc-ip-handling-policy is accepted and
+// does nothing (a STUN server on loopback still gets the packets), so both
+// are passed, the second for runtimes that honor it.
+const browserArguments = "--webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy=disable_non_proxied_udp"
 
 var (
 	iidICoreWebView2EnvironmentOptions = guid("2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5")

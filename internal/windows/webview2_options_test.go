@@ -41,7 +41,7 @@ func TestEnvOptionsBrowserArguments(t *testing.T) {
 		}
 		got := takeWstr(p)
 		release(o)
-		if !strings.Contains(got, "--force-webrtc-ip-handling-policy=disable_non_proxied_udp") {
+		if !strings.Contains(got, "--webrtc-ip-handling-policy=disable_non_proxied_udp") {
 			t.Errorf("language %q: browser arguments %q do not disable non-proxied WebRTC UDP", language, got)
 		}
 	}
