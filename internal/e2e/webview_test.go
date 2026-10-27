@@ -277,3 +277,49 @@ func TestContentWindowWebViewEditMenu(t *testing.T) {
 		waitForPage(t, v.Page(), "getSelection().toString() === 'hello'")
 	}
 }
+
+// TestContentWindowWebViewInertKeyboard hides the region of a web view that
+// has the keyboard, with Invisible, and no key goes to the page then: the
+// page loses the keyboard to the content, though nothing pressed there. It
+// takes the keyboard again when shown, once asked.
+func TestContentWindowWebViewInertKeyboard(t *testing.T) {
+	var view *mygo.WebView
+	var hidden atomic.Bool
+	var frames atomic.Int32
+	w := newWindow(t, mygo.WindowOptions{Title: "Web view inert", Width: 400, Height: 300, Content: ui.View(func(c *ui.Context) {
+		frames.Add(1)
+		ui.Column(c).Fill().AlignItems(ui.Stretch).Children(func() {
+			ui.Button(c, "Native").Height(40)
+			region := ui.Box(c).Grow(1).AlignItems(ui.Stretch)
+			if hidden.Load() {
+				region.Invisible()
+			}
+			region.Children(func() {
+				if view != nil {
+					ui.WebView(c, view).Grow(1)
+				}
+			})
+		})
+	})})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	v, err := w.NewWebView(mygo.WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Update(func() { view = v })
+	v.Page().LoadHTML(`<body style="margin:0;height:100vh"><input id=i autofocus><script>window.ready = true</script></body>`, "")
+	waitForPage(t, v.Page(), "window.ready")
+	w.Focus()
+	v.Focus()
+	waitForPage(t, v.Page(), "document.hasFocus()")
+
+	hidden.Store(true)
+	w.Update(func() {})
+	waitForPage(t, v.Page(), "!document.hasFocus()")
+
+	hidden.Store(false)
+	w.Update(func() {})
+	eventually(t, "the region shown again", func() bool { return frames.Load() > 2 })
+	v.Focus()
+	waitForPage(t, v.Page(), "document.hasFocus()")
+}

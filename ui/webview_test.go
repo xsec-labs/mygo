@@ -305,3 +305,37 @@ func TestPopoverLastPressDecides(t *testing.T) {
 		t.Error("a press on the anchor then elsewhere left the popover open")
 	}
 }
+
+// A web view under an Invisible element is placed still, but inert: the
+// host takes no pointer for it and keeps the keyboard from its page.
+func TestWebViewInert(t *testing.T) {
+	page := &testWebView{"page"}
+	hidden := false
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().AlignItems(Stretch).Children(func() {
+			region := coreBox(c).Grow(1).AlignItems(Stretch)
+			if hidden {
+				region.Invisible()
+			}
+			region.Children(func() { coreWebView(c, page).Grow(1) })
+		})
+	}, 400, 300)
+	p, ok := placed(tt, page)
+	if !ok || p.inert {
+		t.Fatalf("a web view in view: shown %v, inert %v", ok, p.inert)
+	}
+	hidden = true
+	tt.Frame()
+	p, ok = placed(tt, page)
+	if !ok || !p.inert {
+		t.Fatalf("a web view under an Invisible element: shown %v, inert %v: want shown, and inert", ok, p.inert)
+	}
+	if tt.WebViewAt(200, 150) != nil {
+		t.Error("an inert web view takes the pointer")
+	}
+	hidden = false
+	tt.Frame()
+	if p, ok = placed(tt, page); !ok || p.inert {
+		t.Errorf("a web view back in view: shown %v, inert %v", ok, p.inert)
+	}
+}

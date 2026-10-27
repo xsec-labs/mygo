@@ -755,12 +755,12 @@ func (h *windowHost) placeWebViews(views []placedWebView) {
 	natives := make([]NativeWebView, 0, len(views))
 	for _, v := range views {
 		if n := v.v.SurfaceWebView(h.conn); n != nil {
-			list = append(list, platform.WebViewPlacement{WebView: n, Frame: v.frame, Clip: v.clip, Covers: v.covers})
+			list = append(list, platform.WebViewPlacement{WebView: n, Frame: v.frame, Clip: v.clip, Covers: v.covers, Inert: v.inert})
 			natives = append(natives, v.v)
 		}
 	}
 	if slices.EqualFunc(list, h.placed, func(a, b platform.WebViewPlacement) bool {
-		return a.WebView == b.WebView && a.Frame == b.Frame && a.Clip == b.Clip && slices.Equal(a.Covers, b.Covers)
+		return a.WebView == b.WebView && a.Frame == b.Frame && a.Clip == b.Clip && a.Inert == b.Inert && slices.Equal(a.Covers, b.Covers)
 	}) {
 		return
 	}
