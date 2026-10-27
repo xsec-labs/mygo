@@ -170,12 +170,16 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 			gtkWidgetShow(v.web)
 		}
 		shown = append(shown, v)
+		v.inert = p.Inert
 		if p.Inert && gtkWidgetHasFocus(v.web) {
 			// An inert view keeps no keyboard: it goes back to the content.
 			gtkWidgetGrabFocus(s.area)
 		}
 	}
 	for _, v := range host.webViews {
+		if !slices.Contains(shown, v) {
+			v.inert = false
+		}
 		if !slices.Contains(shown, v) && gtkWidgetGetVisible(v.web) {
 			if gtkWidgetHasFocus(v.web) {
 				// A hidden view keeps no keyboard: it goes back to the
@@ -303,7 +307,7 @@ func (w *window) focusedWebView() *window {
 // its last going back.
 func (w *window) TabInto(back bool) {
 	s := w.host.surface
-	if w.closed || s == nil {
+	if w.closed || s == nil || w.inert {
 		return
 	}
 	w.Eval("document.activeElement && document.activeElement.blur()")

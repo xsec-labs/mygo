@@ -56,8 +56,11 @@ type window struct {
 	// webViews are the web views under the surface (webview.go), and host
 	// the window whose surface a web view is under; accessParent is the
 	// node of the content its page's accessible is in.
-	webViews     []*window
-	host         *window
+	webViews []*window
+	host     *window
+	// inert tells that the content placed the web view inert: it takes no
+	// keyboard (Focus, TabInto) until placed otherwise.
+	inert        bool
 	accessParent ptr
 	// controls are the title buttons over the page of a window with a
 	// hidden title bar (titlebar.go), in an overlay with the web view.
@@ -685,7 +688,7 @@ func (w *window) IsVisible() bool { return gtkWidgetGetVisible(w.win) }
 
 func (w *window) Focus() {
 	if w.host != nil {
-		if !w.closed {
+		if !w.closed && !w.inert {
 			gtkWidgetGrabFocus(w.web)
 		}
 		return

@@ -89,6 +89,9 @@ type window struct {
 	webViews []*window
 	host     *window
 	clip     id
+	// inert tells that the content placed the web view inert: it takes no
+	// keyboard (Focus, TabInto) until placed otherwise.
+	inert bool
 	// pointerIn tells that the page of a web view has the pointer, where
 	// nothing the content painted covers it.
 	pointerIn bool
@@ -833,7 +836,7 @@ func (w *window) IsVisible() bool {
 
 func (w *window) Focus() {
 	if w.host != nil {
-		if !w.closed {
+		if !w.closed && !w.inert {
 			send(w.win, "makeFirstResponder:", uintptr(w.web))
 		}
 		return

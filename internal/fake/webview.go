@@ -1,6 +1,10 @@
 package fake
 
-import "github.com/egoist/mygo/internal/platform"
+import (
+	"sync/atomic"
+
+	"github.com/egoist/mygo/internal/platform"
+)
 
 // WebView is a web view under a fake Surface (Surface.NewWebView): a
 // Window of its own for its page, which its handler hears of, without the
@@ -16,6 +20,8 @@ type WebView struct {
 	Shown      bool
 	Focused    bool
 	TabbedBack bool
+
+	inertNow atomic.Bool // the last placement was inert
 }
 
 func (s *Surface) NewWebView(o *platform.WindowOptions, h platform.WindowHandler) (platform.WebView, error) {
@@ -35,6 +41,7 @@ func (s *Surface) PlaceWebViews(views []platform.WebViewPlacement) {
 	s.placements++
 	for _, v := range s.webViews {
 		v.Shown = false
+		v.inertNow.Store(false)
 	}
 	s.order = s.order[:0]
 	for _, p := range views {
@@ -43,6 +50,7 @@ func (s *Surface) PlaceWebViews(views []platform.WebViewPlacement) {
 			continue
 		}
 		v.Placement, v.Shown = p, true
+		v.inertNow.Store(p.Inert)
 		v.Placement.Covers = append([]platform.RectF(nil), p.Covers...)
 		s.order = append(s.order, v)
 	}
@@ -103,15 +111,21 @@ func (s *Surface) Press(x, y float64) *WebView {
 
 func (v *WebView) Focus() {
 	v.mu.Lock()
-	v.Focused = true
+	v.Focused = v.Focused || !v.inert()
 	v.mu.Unlock()
 }
 
 func (v *WebView) TabInto(back bool) {
 	v.mu.Lock()
-	v.Focused, v.TabbedBack = true, back
+	if !v.inert() {
+		v.Focused, v.TabbedBack = true, back
+	}
 	v.mu.Unlock()
 }
+
+// inert tells that the content last placed the web view inert, which takes
+// no keyboard.
+func (v *WebView) inert() bool { return v.inertNow.Load() }
 
 // TabOut moves the keyboard out of the web view as Tab past its page's
 // last element does, or Shift+Tab past its first when back.
