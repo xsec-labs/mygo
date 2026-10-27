@@ -329,7 +329,11 @@ func TestContentWindowWebViewInertKeyboard(t *testing.T) {
 
 	hidden.Store(false)
 	w.Update(func() {})
-	eventually(t, "the region shown again", func() bool { return frames.Load() > 2 })
-	v.Focus()
-	waitForPage(t, v.Page(), "document.hasFocus()")
+	// Focus does nothing until the frame showing the web view is placed, so
+	// it is asked for again until the page has the keyboard.
+	eventually(t, "the keyboard in the web view shown again", func() bool {
+		v.Focus()
+		focus, err := mygo.EvalAs[bool](v.Page(), "document.hasFocus()")
+		return err == nil && focus
+	})
 }
