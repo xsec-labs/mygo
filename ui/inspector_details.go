@@ -477,7 +477,7 @@ func properties(rt *engine, e *node) []inspSection {
 	acc := inspSection{title: "Accessibility", rows: []inspDecl{
 		{name: "role", value: role},
 		{name: "name", value: strconv.Quote(name)},
-		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled())},
+		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.focusBlocked())},
 		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0)},
 	}}
 	if e.description != "" {

@@ -13,6 +13,31 @@ const (
 	tooltipWarm  = 400 * time.Millisecond
 )
 
+// tipDelayOf returns how long the pointer rests on the element before its
+// tip shows.
+func tipDelayOf(s *state) time.Duration {
+	switch {
+	case s == nil || s.tipDelay == 0:
+		return tooltipDelay
+	case s.tipDelay < 0:
+		return 0
+	}
+	return s.tipDelay
+}
+
+// TooltipDelay sets how long the pointer rests on the element before its
+// tip shows (Tooltip, TooltipBase), 0.6 seconds by default; zero or less
+// shows it at once. It does not change the tip of the keyboard focus, which
+// shows at once, nor the window's after another tip went.
+func (e *node) TooltipDelay(d time.Duration) *node {
+	if d <= 0 {
+		e.tipDelay = -1
+	} else {
+		e.tipDelay = d
+	}
+	return e
+}
+
 // tooltips is which element's tip shows, which the frame decides once
 // (show), from what the last frame left.
 type tooltips struct {
@@ -35,8 +60,8 @@ type tooltips struct {
 
 // TooltipBase shows a tip without a look by anchor: fn styles the tip and
 // builds its content. It shows once the pointer has rested on anchor for
-// 0.6 seconds, at once as anchor gets the keyboard focus from the
-// keyboard, and at once too within 0.4 seconds of another tip going, as
+// 0.6 seconds (TooltipDelay), at once as anchor gets the keyboard focus
+// from the keyboard, and at once too within 0.4 seconds of another tip going, as
 // the pointer moves along a toolbar. It goes as the pointer leaves anchor
 // or presses it, and with Escape, until the pointer comes back or the
 // focus does. Over elements inside one another, the innermost one's tip
@@ -130,7 +155,7 @@ func (rt *engine) showTooltip(c *context) uint64 {
 	}
 	tipped := func(id uint64) bool {
 		s := rt.states[id]
-		return s != nil && s.tip && s.flags&flagDisabled == 0
+		return s != nil && s.tip && (s.flags&flagDisabled == 0 || s.disabledFocus)
 	}
 	var hover uint64
 	for _, id := range rt.hover {
@@ -167,7 +192,7 @@ func (rt *engine) showTooltip(c *context) uint64 {
 		t.shown, t.byFocus = focus, true
 	case hover != 0:
 		warm := !t.lastShown.IsZero() && t.hoverSince.Sub(t.lastShown) <= tooltipWarm
-		if wait := tooltipDelay - now.Sub(t.hoverSince); wait > 0 && !warm {
+		if wait := tipDelayOf(rt.states[hover]) - now.Sub(t.hoverSince); wait > 0 && !warm {
 			rt.scheduleAt(now.Add(wait))
 			break
 		}

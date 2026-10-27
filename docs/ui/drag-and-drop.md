@@ -42,6 +42,11 @@ if task, ok := ui.Drop[*Task](done); ok {
 `Dragging` reports that an element is dragging its value, to dim it where
 it was.
 
+A drag starts once the pointer moves 4 DIPs from where it pressed.
+`DragThreshold(dips)` sets that distance for an element: for the value it
+drags, for the movement `Draggable` and `Dragged` follow, and for the rows of
+a list or grid it reorders.
+
 ## Reordering
 
 Lists, tables and grid views reorder their rows by dragging with

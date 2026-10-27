@@ -85,6 +85,10 @@ field of a dialog, and `Focus` keeps it there while you call it; `Focused`,
 `FocusVisible` and `FocusWithin` report it. Enter and Space press a focused
 button or link, and Space toggles a focused check box, switch, toggle or
 radio button.
+`ReleaseFocus` takes the focus from an element, or one inside it, leaving
+none focused, as a click on an empty place does: a search field that clears
+on the first Escape gives up the focus on the second. `DisabledFocusable`
+disables a control and keeps it in Tab's order.
 
 ## Persistent focus
 

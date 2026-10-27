@@ -3,6 +3,7 @@ package ui
 import (
 	"math"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
@@ -381,6 +382,15 @@ type node struct {
 	vertical bool
 	// tip marks an element with a tooltip (TooltipBase).
 	tip bool
+	// tipDelay is how long the pointer rests on the element before its tip
+	// shows, 0 for the default, -1 for no wait (TooltipDelay).
+	tipDelay time.Duration
+	// dragSlop is how far the pointer moves pressing the element before it
+	// drags it, 0 for the default (DragThreshold).
+	dragSlop float32
+	// disabledFocus lets a disabled element keep the keyboard focus
+	// (DisabledFocusable).
+	disabledFocus bool
 	// highlighted is set on the option of a select the pointer or the
 	// arrows are on.
 	highlighted bool
@@ -1300,6 +1310,7 @@ func (e *node) Label(s string) *node { e.label = s; return e }
 // Disabled disables the element and those inside it when d is true: they
 // report no clicks, take no focus, and widgets look disabled.
 func (e *node) Disabled(d bool) *node {
+	e.disabledFocus = false
 	if d {
 		e.flags |= flagDisabled
 	} else {
@@ -1312,6 +1323,29 @@ func (e *node) Disabled(d bool) *node {
 func (e *node) IsDisabled() bool {
 	for p := e; p != nil; p = p.parent {
 		if p.flags&flagDisabled != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// DisabledFocusable disables the element as Disabled does, with one
+// difference: it keeps the keyboard focus. It is still reached by Tab and
+// by a click, takes no clicks, keys or text, looks disabled, and assistive
+// technology reads it as disabled, so a user can arrive at a disabled
+// control and be told why (a Tooltip, a Description). Elements inside it
+// are disabled the same way. A later call of Disabled replaces it.
+func (e *node) DisabledFocusable(d bool) *node {
+	e.Disabled(d)
+	e.disabledFocus = d
+	return e
+}
+
+// focusBlocked reports whether a disabled element, or one around it, takes
+// no focus: a disabled one that DisabledFocusable did not exempt.
+func (e *node) focusBlocked() bool {
+	for p := e; p != nil; p = p.parent {
+		if p.flags&flagDisabled != 0 && !p.disabledFocus {
 			return true
 		}
 	}

@@ -43,6 +43,13 @@ if ui.Button(c, "").Label("Delete").Tooltip("Delete").Children(func() { ui.Icon(
 ## States
 
 `Disabled(true)` grays a button out: it takes neither clicks nor the focus.
+`DisabledFocusable(true)` grays it out and reads as disabled to assistive
+technology, but keeps the focus: Tab stops at it and a click focuses it, so
+a user can get to it and read why it is off (a `Tooltip`, a `Description`).
+It takes no click, key or text, also when it is a text input, and its
+`Tooltip` shows by the pointer and by the focus. What is inside it is the
+same (a `Disabled` element inside is not focusable); a later `Disabled`
+replaces it.
 In a [toolbar](toolbar.md), buttons take no face of their own until
 hovered. A default button that Enter presses wherever the focus is takes
 the key with a [shortcut](input.md#shortcuts):

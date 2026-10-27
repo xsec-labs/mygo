@@ -525,6 +525,10 @@ type state struct {
 	cursor         Cursor
 	// tip marks an element with a tooltip (TooltipBase).
 	tip bool
+	// tipDelay, dragSlop and disabledFocus are the element's, as in node.
+	tipDelay      time.Duration
+	dragSlop      float32
+	disabledFocus bool
 	// effectLayer is what the element and its children render into for
 	// its Effect, kept from frame to frame.
 	effectLayer *Canvas

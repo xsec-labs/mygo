@@ -246,7 +246,7 @@ func (rt *engine) pointerMove(x, y float32) {
 		dx, dy := rt.pressed.vector(rt.pointerX, rt.pointerY, x-rt.pointerX, y-rt.pointerY)
 		rt.pressed.dragX += dx
 		rt.pressed.dragY += dy
-		rt.pressed.drag.move(rt.now(), dx, dy, x-rt.pointerX, y-rt.pointerY)
+		rt.pressed.drag.move(rt.now(), dx, dy, x-rt.pointerX, y-rt.pointerY, rt.pressed.dragDistance())
 		if rt.pressed.flags&(flagTrackPointer|flagDraggable|flagEditable|flagSelectable) != 0 {
 			rt.requestFrame()
 		} else {
@@ -317,7 +317,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		if target == nil && s.flags&interactive != 0 {
 			target = s
 		}
-		if focus == nil && s.flags&(flagFocusable|flagEditable|flagSelectable) != 0 && s.flags&flagDisabled == 0 {
+		if focus == nil && s.flags&(flagFocusable|flagEditable|flagSelectable) != 0 && (s.flags&flagDisabled == 0 || s.disabledFocus) {
 			focus = s
 		}
 	}
@@ -1289,6 +1289,22 @@ func (e *node) Focus() *node {
 	return e
 }
 
+// ReleaseFocus takes the keyboard focus from the element, or from one
+// inside it, leaving no element focused, as a click on an empty place does.
+// It does nothing when the focus is elsewhere. A search field gives up its
+// focus with it on the second Escape, the first having cleared it.
+func (e *node) ReleaseFocus() *node {
+	if !e.FocusWithin() {
+		return e
+	}
+	rt := e.c.rt
+	rt.focused = 0
+	rt.focusVisible = false
+	rt.blinkStart = rt.now()
+	rt.consumed = true
+	return e
+}
+
 // AutoFocus gives the element the keyboard focus in the frame it appears,
 // as the first field of a dialog.
 func (e *node) AutoFocus() *node {
@@ -1374,7 +1390,7 @@ func (e *node) DragEnded() (vx, vy float32, ok bool) {
 // dragTrack keeps the last moves of a press, to tell how fast it goes: in
 // the element's axes (x, y), and in the window's (wx, wy, from where the
 // press began, ox and oy). far tells that the press went dragStart DIPs
-// from there.
+// (DragThreshold) from there.
 type dragTrack struct {
 	x, y    float32
 	ox, oy  float32
@@ -1402,8 +1418,9 @@ func (d *dragTrack) add(now time.Time) {
 }
 
 // move adds a move by dx, dy in the element's axes, wdx, wdy in the
-// window's, at now.
-func (d *dragTrack) move(now time.Time, dx, dy, wdx, wdy float32) {
+// window's, at now. far is set once the press is dist DIPs from where it
+// began.
+func (d *dragTrack) move(now time.Time, dx, dy, wdx, wdy, dist float32) {
 	if wdx == 0 && wdy == 0 {
 		return // as with the release's position
 	}
@@ -1411,7 +1428,7 @@ func (d *dragTrack) move(now time.Time, dx, dy, wdx, wdy float32) {
 	d.y += dy
 	d.wx += wdx
 	d.wy += wdy
-	d.far = d.far || d.wx*d.wx+d.wy*d.wy >= dragStart*dragStart
+	d.far = d.far || d.wx*d.wx+d.wy*d.wy >= dist*dist
 	d.add(now)
 }
 
