@@ -2932,7 +2932,10 @@ either.
   which notes it for `PressedOutside` and takes the focus from the
   content; the engine sets no cursor while the pointer is over a web view
   (`cursorUnknown`), whose page sets it. Web views the frame does not build
-  hide and keep their pages. Glyphs over a hole are not on an opaque
+  hide and keep their pages, and take no keyboard; so do those it builds
+  inert, under an `Invisible` element or a page leaving (`Inert`): they are
+  placed with all their clip covered, and the backend takes the keyboard
+  from their page if it had it. Glyphs over a hole are not on an opaque
   background (`Painter.holes`), so that subpixel ones do not color the
   page. Below full opacity a hole takes only that much of what is under
   it away (`OpHole`'s `Opacity`), so the page blends over it. The element

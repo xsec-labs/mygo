@@ -586,6 +586,11 @@ type WebViewPlacement struct {
 	// the web view that takes the pointer: there the pointer is the
 	// surface's, elsewhere in Clip the web view's.
 	Covers []RectF
+	// Inert tells that the content shows the web view but takes it out of
+	// use, as under an Invisible element: Covers hold all its clip, and the
+	// web view keeps no keyboard, as one not placed, which goes back to the
+	// content if the web view had it.
+	Inert bool
 }
 
 // At reports whether the pointer at x, y is the web view's.

@@ -81,6 +81,7 @@ type placedWebView struct {
 	v           NativeWebView
 	frame, clip platform.RectF
 	covers      []platform.RectF
+	inert       bool
 }
 
 // webViewPlacements returns where the frame shows its web views, in the
@@ -99,7 +100,7 @@ func (rt *engine) webViewPlacements() []placedWebView {
 			// The inert one went first: this one takes its place.
 			out = slices.DeleteFunc(out, func(o placedWebView) bool { return o.v == wp.v })
 		}
-		out = append(out, placedWebView{v: wp.v, frame: rectF(wp.frame), clip: rectF(wp.clip), covers: wp.covers(rt.hits)})
+		out = append(out, placedWebView{v: wp.v, frame: rectF(wp.frame), clip: rectF(wp.clip), covers: wp.covers(rt.hits), inert: wp.inert})
 	}
 	rt.webOut = out
 	return out

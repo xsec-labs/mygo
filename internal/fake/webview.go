@@ -47,8 +47,8 @@ func (s *Surface) PlaceWebViews(views []platform.WebViewPlacement) {
 		s.order = append(s.order, v)
 	}
 	for _, v := range s.webViews {
-		if !v.Shown {
-			v.Focused = false // a hidden view keeps no keyboard
+		if !v.Shown || v.Placement.Inert {
+			v.Focused = false // a hidden or inert view keeps no keyboard
 		}
 	}
 }

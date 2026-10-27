@@ -270,3 +270,63 @@ func TestWebViewPress(t *testing.T) {
 		t.Errorf("a press on the page: web view %v, focused %v, popover open %v", pressed, fv.Focused, open)
 	}
 }
+
+// A web view under an Invisible element is placed, inert, and keeps no
+// keyboard even when the page had it: keys go to the content, not to a page
+// the user cannot see. It takes the keyboard again when in view.
+func TestWebViewInertKeepsNoKeyboard(t *testing.T) {
+	var v *WebView
+	hidden := false
+	w, _, s := contentWindow(t, func(c *ui.Context) {
+		ui.Column(c).Fill().AlignItems(ui.Stretch).Children(func() {
+			region := ui.Box(c).Grow(1).AlignItems(ui.Stretch)
+			if hidden {
+				region.Invisible()
+			}
+			region.Children(func() {
+				if v != nil {
+					ui.WebView(c, v).Grow(1)
+				}
+			})
+		})
+	})
+	v, err := w.NewWebView(WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv := s.WebViews()[0]
+	frame := func() {
+		w.Invalidate()
+		onMain(func() {})
+		onMain(func() { s.Frame() })
+	}
+	frame()
+	if !fv.Shown || fv.Placement.Inert {
+		t.Fatalf("the web view in view: shown %v, inert %v", fv.Shown, fv.Placement.Inert)
+	}
+	fv.Focus()
+	frame()
+	if !fv.Focused {
+		t.Fatal("a web view in view lost the keyboard")
+	}
+
+	hidden = true
+	frame()
+	if !fv.Shown || !fv.Placement.Inert {
+		t.Fatalf("the web view under Invisible: shown %v, inert %v: want placed, and inert", fv.Shown, fv.Placement.Inert)
+	}
+	if fv.Focused {
+		t.Error("an inert web view kept the keyboard")
+	}
+
+	hidden = false
+	frame()
+	if fv.Placement.Inert {
+		t.Error("the web view back in view is still inert")
+	}
+	fv.Focus()
+	frame()
+	if !fv.Focused {
+		t.Error("a web view back in view cannot take the keyboard")
+	}
+}

@@ -170,6 +170,10 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 			gtkWidgetShow(v.web)
 		}
 		shown = append(shown, v)
+		if p.Inert && gtkWidgetHasFocus(v.web) {
+			// An inert view keeps no keyboard: it goes back to the content.
+			gtkWidgetGrabFocus(s.area)
+		}
 	}
 	for _, v := range host.webViews {
 		if !slices.Contains(shown, v) && gtkWidgetGetVisible(v.web) {

@@ -84,6 +84,11 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 				send(v.clip, "setHidden:", 0)
 			}
 			shown = append(shown, v)
+			if p.Inert && v.hasKeyboard() {
+				// An inert view keeps no keyboard either: it goes back to
+				// the content.
+				send(host.win, "makeFirstResponder:", uintptr(s.view))
+			}
 		}
 		for _, v := range host.webViews {
 			if !slices.Contains(shown, v) && !sendBool(v.clip, "isHidden") {

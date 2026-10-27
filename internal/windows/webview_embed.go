@@ -275,6 +275,11 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 		if v, ok := p.WebView.(*window); ok && v.host == s.w && !v.closed {
 			v.frame, v.clip, v.shown = p.Frame, p.Clip, true
 			shown = append(shown, v)
+			if p.Inert && v.focused {
+				// An inert view keeps no keyboard: it goes back to the
+				// content.
+				procSetFocus.Call(s.hwnd)
+			}
 		}
 	}
 	for _, v := range s.w.webViews {
