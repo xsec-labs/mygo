@@ -176,7 +176,8 @@ func createEnvironment(userData, language string, done func(env uintptr, err err
 }
 
 // createEnvironmentWith creates the environment as createEnvironment does,
-// with the options of language, or none for "".
+// with the options of language (the system's for ""), and the browser
+// arguments in any case.
 func createEnvironmentWith(userData, language string, done func(env uintptr, err error)) error {
 	completed := func(hr, env uintptr) {
 		if failed(hr) || env == 0 {
@@ -187,11 +188,8 @@ func createEnvironmentWith(userData, language string, done func(env uintptr, err
 		done(env, nil)
 	}
 	dataDir := u16(userData)
-	var options uintptr
-	if language != "" {
-		options = newEnvOptions(language)
-		defer release(options) // the environment takes its own reference
-	}
+	options := newEnvOptions(language)
+	defer release(options) // the environment takes its own reference
 
 	// An official loader next to the executable wins.
 	if proc := loaderProc(); proc != nil {

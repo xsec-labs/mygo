@@ -421,6 +421,7 @@ var (
 	webkitSettingsSetAllowFileAccessFromFileURLs      func(s ptr, v bool)
 	webkitSettingsSetJavascriptCanAccessClipboard     func(s ptr, v bool)
 	webkitSettingsSetEnableFullscreen                 func(s ptr, v bool)
+	webkitSettingsSetEnableWebRTC                     func(s ptr, v bool) // nil before WebKitGTK 2.38
 	webkitWebViewLoadURI                              func(wv ptr, uri *byte)
 	webkitWebViewLoadHTML                             func(wv ptr, html *byte, base *byte)
 	webkitWebViewReload                               func(wv ptr)
@@ -921,6 +922,7 @@ func loadWebKit() error {
 	mustBind(w, &webkitSettingsSetAllowFileAccessFromFileURLs, "webkit_settings_set_allow_file_access_from_file_urls")
 	mustBind(w, &webkitSettingsSetJavascriptCanAccessClipboard, "webkit_settings_set_javascript_can_access_clipboard")
 	mustBind(w, &webkitSettingsSetEnableFullscreen, "webkit_settings_set_enable_fullscreen")
+	bind(w, &webkitSettingsSetEnableWebRTC, "webkit_settings_set_enable_webrtc")
 	mustBind(w, &webkitWebViewLoadURI, "webkit_web_view_load_uri")
 	mustBind(w, &webkitWebViewLoadHTML, "webkit_web_view_load_html")
 	mustBind(w, &webkitWebViewReload, "webkit_web_view_reload")

@@ -312,6 +312,17 @@ const geolocationGuard = `(()=>{const E=(()=>{const e=new Error("User denied Geo
 	`for(const t of [window.Geolocation&&Geolocation.prototype,navigator.geolocation]){` +
 	`if(t)for(const k in deny)try{Object.defineProperty(t,k,{value:deny[k],writable:false,configurable:false})}catch(e){}}})();`
 
+// webRTCGuard removes the peer connection constructors from the page and from
+// the frames that run this script. A peer connection with a STUN or TURN
+// server sends UDP to any host and resolves any name, which no CSP and no
+// request filter covers: it is a way out for data. The backends turn it off
+// where they can (see the WebView2 environment, WKPreferences, WebKitGTK
+// settings); this is the layer under them and the only one where there is no
+// switch. Not a boundary: script that gets a pristine window from elsewhere
+// is only stopped by those.
+const webRTCGuard = `(()=>{for(const k of ["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCSctpTransport","RTCIceTransport","RTCDtlsTransport"]){` +
+	`try{Object.defineProperty(window,k,{value:undefined,writable:false,configurable:false})}catch(e){}}})();`
+
 // untrustedScript is the page's only connection to the app. It binds the
 // native postMessage at document start and defines objects the page cannot
 // replace, so the page cannot be handed the secret by swapping postMessage.
@@ -320,7 +331,7 @@ const geolocationGuard = `(()=>{const E=(()=>{const e=new Error("User denied Geo
 // whoever has it can only send what xsecHost sends.
 func untrustedScript(secret string) string {
 	s, _ := json.Marshal(secret)
-	return screenCaptureGuard + geolocationGuard + `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
+	return screenCaptureGuard + geolocationGuard + webRTCGuard + `(()=>{if(window.xsecHost)return;const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.mygo;` +
 		`const c=window.chrome&&window.chrome.webview;` +
 		// Bound now, at document start: the page cannot swap postMessage later
 		// to be handed what is posted.

@@ -362,6 +362,19 @@ func disableScreenCapture(prefs id) {
 	send(prefs, "_setScreenCaptureEnabled:", boolArg(false))
 }
 
+// disablePeerConnection turns RTCPeerConnection off in the preferences of an
+// untrusted web view (SPI of WKPreferences): a peer connection sends UDP to
+// any host, which nothing else the app configures covers. Without the SPI the
+// page's script is the only guard left (see untrustedScript), so the miss is
+// logged.
+func disablePeerConnection(prefs id) {
+	if !respondsTo(prefs, "_setPeerConnectionEnabled:") {
+		log.Printf("mygo: WKPreferences cannot turn off WebRTC; an untrusted page relies on its script guard for it")
+		return
+	}
+	send(prefs, "_setPeerConnectionEnabled:", boolArg(false))
+}
+
 // screenCaptureEnabled reports the screen capture preference of a web view.
 func screenCaptureEnabled(web id) bool {
 	return sendBool(send(send(web, "configuration"), "preferences"), "_screenCaptureEnabled")
@@ -393,6 +406,7 @@ func (w *window) createWebView(content NSRect) {
 		// whoever picks a source hands the page the screen. WebKit never asks
 		// the delegate for that, so the page must not get to ask at all.
 		disableScreenCapture(prefs)
+		disablePeerConnection(prefs)
 	}
 	// Tab reaches buttons, links and the other controls too, as it does in
 	// Chrome, Electron and WebView2, whatever the system's keyboard

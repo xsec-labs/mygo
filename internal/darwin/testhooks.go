@@ -1013,3 +1013,23 @@ func TestScreenCaptureOfWebViews() (untrusted, trusted []bool) {
 	})
 	return untrusted, trusted
 }
+
+// TestPeerConnectionOfWebViews reports the WebRTC preference of every web
+// view, by whether the page is untrusted. It must run on the main thread.
+func TestPeerConnectionOfWebViews() (untrusted, trusted []bool) {
+	withPool(func() {
+		for web, w := range theBackend.byWebView {
+			prefs := send(send(web, "configuration"), "preferences")
+			if !respondsTo(prefs, "_peerConnectionEnabled") {
+				continue
+			}
+			on := sendBool(prefs, "_peerConnectionEnabled")
+			if w.opts.Untrusted {
+				untrusted = append(untrusted, on)
+			} else {
+				trusted = append(trusted, on)
+			}
+		}
+	})
+	return untrusted, trusted
+}
