@@ -213,7 +213,7 @@ func (w *window) setUpEmbedded(comp uintptr) uintptr {
 // TabInto gives the page the keyboard at its first element, or its last
 // going back.
 func (w *window) TabInto(back bool) {
-	if w.closed || w.controller == 0 || !w.shown {
+	if w.closed || w.controller == 0 || !w.shown || w.inert {
 		return
 	}
 	reason := uintptr(moveFocusNext)
@@ -273,7 +273,7 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 	var shown []*window
 	for _, p := range views {
 		if v, ok := p.WebView.(*window); ok && v.host == s.w && !v.closed {
-			v.frame, v.clip, v.shown = p.Frame, p.Clip, true
+			v.frame, v.clip, v.shown, v.inert = p.Frame, p.Clip, true, p.Inert
 			shown = append(shown, v)
 			if p.Inert && v.focused {
 				// An inert view keeps no keyboard: it goes back to the
@@ -283,6 +283,9 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 		}
 	}
 	for _, v := range s.w.webViews {
+		if !slices.Contains(shown, v) {
+			v.inert = false
+		}
 		if !slices.Contains(shown, v) && v.shown {
 			v.shown = false
 			if v.focused {

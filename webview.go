@@ -127,7 +127,9 @@ func (v *WebView) Page() *Page { return v.w.pg }
 // Window returns the window the web view is in.
 func (v *WebView) Window() *Window { return v.w.host }
 
-// Focus gives the web view the keyboard, once it shows.
+// Focus gives the web view the keyboard, once it shows. A web view the view
+// shows inert, as under an Invisible element, takes none, and Focus does
+// nothing for it: call it once the frame showing the web view is placed.
 func (v *WebView) Focus() {
 	onMain(func() {
 		if n, ok := v.w.native.(*webViewNative); ok {

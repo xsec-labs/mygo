@@ -82,8 +82,11 @@ type window struct {
 	clipVis, webVis  uintptr
 	frame, clip      platform.RectF
 	shown, focused   bool
-	cursor           uintptr
-	saved            struct {
+	// inert tells that the content placed the web view inert: it takes no
+	// keyboard (Focus, TabInto) until placed otherwise.
+	inert  bool
+	cursor uintptr
+	saved  struct {
 		style, exStyle uintptr
 		placement      windowPlacement
 	}
@@ -824,7 +827,9 @@ func (w *window) IsVisible() bool {
 
 func (w *window) Focus() {
 	if w.host != nil {
-		w.focusWebView()
+		if !w.inert {
+			w.focusWebView()
+		}
 		return
 	}
 	if f := w.opts.Flyout; f != nil && !f.Focusable {

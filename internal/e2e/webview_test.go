@@ -316,6 +316,11 @@ func TestContentWindowWebViewInertKeyboard(t *testing.T) {
 	hidden.Store(true)
 	w.Update(func() {})
 	waitForPage(t, v.Page(), "!document.hasFocus()")
+	// Asked for, it takes none either.
+	v.Focus()
+	if focus, err := mygo.EvalAs[bool](v.Page(), "document.hasFocus()"); err != nil || focus {
+		t.Errorf("an inert web view asked for the keyboard has it: %v (%v)", focus, err)
+	}
 
 	hidden.Store(false)
 	w.Update(func() {})

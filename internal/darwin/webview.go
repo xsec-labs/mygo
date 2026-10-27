@@ -84,6 +84,7 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 				send(v.clip, "setHidden:", 0)
 			}
 			shown = append(shown, v)
+			v.inert = p.Inert
 			if p.Inert && v.hasKeyboard() {
 				// An inert view keeps no keyboard either: it goes back to
 				// the content.
@@ -91,6 +92,9 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 			}
 		}
 		for _, v := range host.webViews {
+			if !slices.Contains(shown, v) {
+				v.inert = false
+			}
 			if !slices.Contains(shown, v) && !sendBool(v.clip, "isHidden") {
 				if v.hasKeyboard() {
 					// A hidden view keeps no keyboard: it goes back to the
@@ -191,7 +195,7 @@ func (w *window) pressed(ev id, button int) {
 // it.
 func (w *window) TabInto(back bool) {
 	s := w.host.surface
-	if w.closed || s == nil {
+	if w.closed || s == nil || w.inert {
 		return
 	}
 	withPool(func() {
