@@ -1017,9 +1017,13 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.parent != nil && e.parent.st.flags&flagDisabled != 0 {
 		// Disabled with the element around it, which may have been
 		// disabled after building it, as a Fieldset.
+		if s.flags&flagDisabled == 0 {
+			s.disabledFocus = e.parent.st.disabledFocus
+		}
 		s.flags |= flagDisabled
 	}
 	s.cursor, s.tip = e.cursor, e.tip
+	s.tipDelay, s.dragSlop, s.disabledFocus = e.tipDelay, e.dragSlop, e.disabledFocus
 	s.webView = e.webView
 	s.role = e.role
 	s.input, s.caret, s.takesText, s.noIME = e.inputFn, e.caret, e.takesText, e.noIME
@@ -1087,7 +1091,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 			rt.labels = append(rt.labels, labelNode{e.id, label, intersect(e.visualRect(e.frags[0]), clip)})
 		}
 	}
-	if e.flags&flagFocusable != 0 && !e.IsDisabled() && !invisible {
+	if e.flags&flagFocusable != 0 && !e.focusBlocked() && !invisible {
 		rt.focusOrder = append(rt.focusOrder, e.id)
 		rt.focusScopes = append(rt.focusScopes, rt.commitScope)
 		// Tab goes to the radio button or tab chosen; not to a toggle

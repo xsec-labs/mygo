@@ -2437,8 +2437,8 @@ func Toolbar(c *Context, fn func()) Element {
 
 // TooltipBase shows a tip without a look by anchor: fn styles the tip and
 // builds its content. It shows once the pointer has rested on anchor for
-// 0.6 seconds, at once as anchor gets the keyboard focus from the
-// keyboard, and at once too within 0.4 seconds of another tip going, as
+// 0.6 seconds (TooltipDelay), at once as anchor gets the keyboard focus
+// from the keyboard, and at once too within 0.4 seconds of another tip going, as
 // the pointer moves along a toolbar. It goes as the pointer leaves anchor
 // or presses it, and with Escape, until the pointer comes back or the
 // focus does. Over elements inside one another, the innermost one's tip
@@ -3365,6 +3365,22 @@ func (_handle Element) Disabled(d bool) Element {
 	return wrapElement(_node.Disabled(d))
 }
 
+// DisabledFocusable disables the element as Disabled does, with one
+// difference: it keeps the keyboard focus. It is still reached by Tab and
+// by a click, takes no clicks, keys or text, looks disabled, and assistive
+// technology reads it as disabled, so a user can arrive at a disabled
+// control and be told why (a Tooltip, a Description). Elements inside it
+// are disabled the same way. A later call of Disabled replaces it.
+func (_handle Element) DisabledFocusable(d bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.DisabledFocusable(d))
+}
+
 // Dismissed reports whether pressing Escape or clicking outside closed the
 // dialog or popover (Modal, DialogBase, Popover, PopoverBase) returning the
 // element, in the frame it did, setting its *open to false: one that must
@@ -3481,6 +3497,21 @@ func (_handle Element) DragOffset() Point {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.DragOffset()
+}
+
+// DragThreshold sets how far, in DIPs, the pointer moves pressing the
+// element before it drags: a value it Drags, the movement Draggable and
+// Dragged follow, and a row of a list or grid it reorders. It is 4 by
+// default; zero or less keeps that. An element inside another that drags
+// is pressed with its own threshold, the one around it with its own.
+func (_handle Element) DragThreshold(dips float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.DragThreshold(dips))
 }
 
 // DragVelocity returns how fast, in DIPs per second along the element's
@@ -4903,6 +4934,20 @@ func (_handle Element) ReadOnly(on bool) Element {
 	return wrapElement(_node.ReadOnly(on))
 }
 
+// ReleaseFocus takes the keyboard focus from the element, or from one
+// inside it, leaving no element focused, as a click on an empty place does.
+// It does nothing when the focus is elsewhere. A search field gives up its
+// focus with it on the second Escape, the first having cleared it.
+func (_handle Element) ReleaseFocus() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ReleaseFocus())
+}
+
 // Reverse lays the children out in the other direction: a Row from right
 // to left, a Column from bottom to top, as CSS's row-reverse and
 // column-reverse do. Justify's Start is then the right or the bottom.
@@ -5558,6 +5603,20 @@ func (_handle Element) Tooltip(s string) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Tooltip(s))
+}
+
+// TooltipDelay sets how long the pointer rests on the element before its
+// tip shows (Tooltip, TooltipBase), 0.6 seconds by default; zero or less
+// shows it at once. It does not change the tip of the keyboard focus, which
+// shows at once, nor the window's after another tip went.
+func (_handle Element) TooltipDelay(d time.Duration) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TooltipDelay(d))
 }
 
 // Top, Right, Bottom and Left place an Absolute element. On an element in

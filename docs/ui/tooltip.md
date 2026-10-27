@@ -23,6 +23,10 @@ menu a menu button opens. Over elements inside one another, the innermost
 one's tip shows, and one tip shows at a time. Give one to buttons showing
 only an icon, and to what a label alone does not explain.
 
+`TooltipDelay(d)` changes how long the pointer rests before the tip shows
+(`TooltipDelay(300 * time.Millisecond)`); zero shows it at once. The
+keyboard focus and the window's warm-up after another tip are unchanged.
+
 The tip takes the theme's `Inverse` and `InverseText` colors, its text and
 background turned over unless the theme sets them (see
 [themes](styling.md#themes)).

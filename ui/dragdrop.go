@@ -13,8 +13,27 @@ import (
 // dragging them (ListState.Reorder, GridState.Reorder).
 
 // dragStart is how far the pointer moves pressing a source before it
-// drags it.
+// drags it, unless the source says otherwise (DragThreshold).
 const dragStart = 4
+
+// dragDistance returns how far the pointer moves pressing the element
+// before it drags.
+func (s *state) dragDistance() float32 {
+	if s.dragSlop > 0 {
+		return s.dragSlop
+	}
+	return dragStart
+}
+
+// DragThreshold sets how far, in DIPs, the pointer moves pressing the
+// element before it drags: a value it Drags, the movement Draggable and
+// Dragged follow, and a row of a list or grid it reorders. It is 4 by
+// default; zero or less keeps that. An element inside another that drags
+// is pressed with its own threshold, the one around it with its own.
+func (e *node) DragThreshold(dips float32) *node {
+	e.dragSlop = max(dips, 0)
+	return e
+}
 
 // valueDrag is a value being dragged: the element dragging it, the value,
 // where the pointer pressed the element, the element taking it under the
@@ -133,7 +152,7 @@ func (rt *engine) dragMove(x, y float32) {
 	if d == nil {
 		px, py := s.world.Point(s.x+s.pressX, s.y+s.pressY)
 		dx, dy := x-px, y-py
-		if dx*dx+dy*dy < dragStart*dragStart {
+		if dist := s.dragDistance(); dx*dx+dy*dy < dist*dist {
 			return
 		}
 		value := s.dragValue
@@ -219,7 +238,7 @@ func (rt *engine) handPress(x, y float32) *state {
 		return nil
 	}
 	px, py := s.world.Point(s.x+s.pressX, s.y+s.pressY)
-	if dx, dy := x-px, y-py; dx*dx+dy*dy < dragStart*dragStart {
+	if dx, dy, dist := x-px, y-py, a.dragDistance(); dx*dx+dy*dy < dist*dist {
 		return nil
 	}
 	rt.pressed, rt.pressDragger = a, 0

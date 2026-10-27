@@ -100,7 +100,7 @@ func (in *inspector) paintTooltip(rt *engine, p *Painter, e *node, box Rect, h f
 	if name == "" && e.kind == kindText {
 		name = clip(e.text, 40)
 	}
-	focusable := e.flags&flagFocusable != 0 && !e.IsDisabled()
+	focusable := e.flags&flagFocusable != 0 && !e.focusBlocked()
 	acc := []tipRow{{label: "Name", value: name}, {label: "Role", value: role}, {label: "Keyboard-focusable", value: "✓"}}
 	if !focusable {
 		acc[2].value = "⊘"
