@@ -330,3 +330,50 @@ func TestWebViewInertKeepsNoKeyboard(t *testing.T) {
 		t.Error("a web view back in view cannot take the keyboard")
 	}
 }
+
+// A web view all covered by something that takes the pointer has the same
+// covers whether it is inert or not: becoming inert alone is placed again,
+// or the backend never takes the keyboard from its page.
+func TestWebViewInertAloneIsPlaced(t *testing.T) {
+	var v *WebView
+	hidden := false
+	w, _, s := contentWindow(t, func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			region := ui.Box(c).Fill().AlignItems(ui.Stretch)
+			if hidden {
+				region.Invisible()
+			}
+			region.Children(func() {
+				if v != nil {
+					ui.WebView(c, v).Grow(1)
+				}
+			})
+			// A backdrop over all of it, as a modal's.
+			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Background(ui.RGB(0, 0, 0)).Clicked()
+		})
+	})
+	v, err := w.NewWebView(WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv := s.WebViews()[0]
+	frame := func() {
+		w.Invalidate()
+		onMain(func() {})
+		onMain(func() { s.Frame() })
+	}
+	frame()
+	if !fv.Shown || fv.Placement.Inert || len(fv.Placement.Covers) != 1 || fv.Placement.Covers[0] != fv.Placement.Clip {
+		t.Fatalf("the covered web view: shown %v, placement %+v: want one cover, all of its clip, not inert", fv.Shown, fv.Placement)
+	}
+	hidden = true
+	frame()
+	if !fv.Placement.Inert {
+		t.Errorf("the covered web view under Invisible is placed %+v: want inert", fv.Placement)
+	}
+	hidden = false
+	frame()
+	if fv.Placement.Inert {
+		t.Errorf("the covered web view back in view is placed %+v: want not inert", fv.Placement)
+	}
+}
