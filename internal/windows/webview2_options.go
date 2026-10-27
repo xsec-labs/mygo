@@ -13,19 +13,30 @@ import (
 // that the WebView2 environment reads its options from as it is created:
 // the language of the browser, which is the language of its own texts (the
 // context menus, the dialogs of pages) and the first of the pages'
-// navigator.languages and Accept-Language. Its other options are those of
-// an environment created without options: no further arguments, no
-// version the runtime must be, no single sign-on. It implements no later
-// version of the interface, which the environment asks for and does
-// without.
+// navigator.languages and Accept-Language, and the browser arguments
+// (browserArguments). Its other options are those of an environment created
+// without options: no version the runtime must be, no single sign-on. It
+// implements no later version of the interface, which the environment asks
+// for and does without.
 //
 // The objects share one vtable, whose callbacks are created once; they
 // stay reachable through envOptionsLive until COM releases them.
 type envOptions struct {
-	vtbl     *[11]uintptr
-	refs     int32
-	language []uint16 // NUL-terminated, or nil
+	vtbl      *[11]uintptr
+	refs      int32
+	language  []uint16 // NUL-terminated, or nil
+	arguments []uint16 // NUL-terminated
 }
+
+// browserArguments are the command line switches of the browser process of
+// the environment, which every web view of the app shares, trusted or not.
+//
+// A WebRTC peer connection with a STUN or TURN server sends UDP packets to
+// any host and resolves any name, which a page's CSP, WebResourceRequested
+// and the navigation policy do not see: for an untrusted page it is a way out
+// for data. disable_non_proxied_udp lets WebRTC use no UDP but through a
+// proxy, so the web views of this fork have no direct peer connections.
+const browserArguments = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"
 
 var (
 	iidICoreWebView2EnvironmentOptions = guid("2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5")
@@ -68,7 +79,12 @@ func newEnvOptions(language string) uintptr {
 			}),
 			syscall.NewCallback(func(this uintptr) uintptr { return uintptr(envOptionsRef(this, 1)) }),
 			syscall.NewCallback(func(this uintptr) uintptr { return uintptr(envOptionsRef(this, -1)) }),
-			str(func(*envOptions) []uint16 { return nil }), // get_AdditionalBrowserArguments
+			str(func(o *envOptions) []uint16 { // get_AdditionalBrowserArguments
+				if o == nil {
+					return nil
+				}
+				return o.arguments
+			}),
 			ignore, // put_AdditionalBrowserArguments
 			str(func(o *envOptions) []uint16 { // get_Language
 				if o == nil {
@@ -93,7 +109,7 @@ func newEnvOptions(language string) uintptr {
 			ignore, // put_AllowSingleSignOnUsingOSPrimaryAccount
 		}
 	})
-	o := &envOptions{vtbl: &envOptionsVtbl, refs: 1}
+	o := &envOptions{vtbl: &envOptionsVtbl, refs: 1, arguments: utf16z(browserArguments)}
 	if language != "" {
 		o.language = utf16z(chromiumLanguage(language))
 	}

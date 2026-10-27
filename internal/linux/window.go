@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"slices"
@@ -303,6 +304,14 @@ func (w *window) createWebView() {
 	if o.Untrusted {
 		// Element full screen would fullscreen the host's toplevel window.
 		webkitSettingsSetEnableFullscreen(settings, false)
+		// A peer connection is UDP to any host, which no CSP covers. Without
+		// the setting the page's script is the only guard left (see
+		// untrustedScript), so the miss is logged.
+		if webkitSettingsSetEnableWebRTC != nil {
+			webkitSettingsSetEnableWebRTC(settings, false)
+		} else {
+			log.Printf("mygo: WebKitGTK cannot turn off WebRTC; an untrusted page relies on its script guard for it")
+		}
 	}
 	if o.UserAgent != "" {
 		webkitSettingsSetUserAgent(settings, cs(userAgentWithSuffix(o.UserAgent, o.UserAgentSuffix)))

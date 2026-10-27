@@ -307,6 +307,18 @@ func TestUntrustedScriptDeniesGeolocation(t *testing.T) {
 	}
 }
 
+// The script that runs in an untrusted page removes the peer connection
+// constructors, in the page and in the frames that run it: a peer connection
+// with a STUN or TURN server is UDP to any host, which no CSP covers.
+func TestUntrustedScriptRemovesWebRTC(t *testing.T) {
+	src := untrustedScript("secret")
+	for _, want := range []string{"RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "configurable:false"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the untrusted script lacks %q", want)
+		}
+	}
+}
+
 func TestUntrustedNewWindowOpensNothing(t *testing.T) {
 	var asked []string
 	_, v, fv := untrustedWebView(t, UntrustedOptions{
