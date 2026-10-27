@@ -26,9 +26,10 @@ func (s *state) dragDistance() float32 {
 }
 
 // DragThreshold sets how far, in DIPs, the pointer moves pressing the
-// element before it drags: a value it Drags, the movement Draggable and
-// Dragged follow, and a row of a list or grid it reorders. It is 4 by
-// default; zero or less keeps that. An element inside another that drags
+// element before it drags: a value it Drags, the movement Draggable
+// follows, and a row of a list or grid it reorders. It is 4 by default;
+// zero or less keeps that. Dragged follows it only when it is set: it
+// reports every move otherwise. An element inside another that drags
 // is pressed with its own threshold, the one around it with its own.
 func (e *node) DragThreshold(dips float32) *node {
 	e.dragSlop = max(dips, 0)

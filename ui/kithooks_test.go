@@ -307,3 +307,46 @@ func TestDragThreshold(t *testing.T) {
 		})
 	}
 }
+
+func TestDraggedThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		slop float32
+		path []float32 // the pointer's x from where it pressed, move by move
+		want []float32 // the sum Dragged reported by then, move by move
+	}{
+		{"none", 0, []float32{1, 2, 3}, []float32{1, 2, 3}},
+		{"held back, then all of it", 8, []float32{3, 6, 9, 12}, []float32{0, 0, 9, 12}},
+		{"one big move", 8, []float32{20}, []float32{20}},
+		{"back inside after going far", 8, []float32{10, 2}, []float32{10, 2}},
+		{"inside the whole press", 8, []float32{3, -3, 5}, []float32{0, 0, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var sum float32
+			held := false
+			tt := coreNewTester(func(c *context) {
+				coreColumn(c).Padding(20).Children(func() {
+					h := coreBox(c).Size(100, 40).Label("Handle")
+					if tc.slop > 0 {
+						h.DragThreshold(tc.slop)
+					}
+					dx, _, ok := h.Dragged()
+					sum += dx
+					held = ok
+				})
+			}, 300, 200)
+			r, _ := tt.Find("Handle")
+			tt.Press(r.X+10, r.Y+10)
+			for i, x := range tc.path {
+				tt.Move(r.X+10+x, r.Y+10)
+				if sum != tc.want[i] {
+					t.Errorf("after move %d to %v: Dragged added up to %v, want %v", i, x, sum, tc.want[i])
+				}
+				if !held {
+					t.Errorf("after move %d: the press is not held", i)
+				}
+			}
+			tt.Release(r.X+10+tc.path[len(tc.path)-1], r.Y+10)
+		})
+	}
+}

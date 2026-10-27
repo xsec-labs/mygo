@@ -3500,9 +3500,10 @@ func (_handle Element) DragOffset() Point {
 }
 
 // DragThreshold sets how far, in DIPs, the pointer moves pressing the
-// element before it drags: a value it Drags, the movement Draggable and
-// Dragged follow, and a row of a list or grid it reorders. It is 4 by
-// default; zero or less keeps that. An element inside another that drags
+// element before it drags: a value it Drags, the movement Draggable
+// follows, and a row of a list or grid it reorders. It is 4 by default;
+// zero or less keeps that. Dragged follows it only when it is set: it
+// reports every move otherwise. An element inside another that drags
 // is pressed with its own threshold, the one around it with its own.
 func (_handle Element) DragThreshold(dips float32) Element {
 	_node := _handle.node()
@@ -3571,7 +3572,10 @@ func (_handle Element) Draggable(offset *Point, o DraggableOptions) Element {
 }
 
 // Dragged reports how far the pointer moved in the element's local axes
-// since the last frame while pressing it.
+// since the last frame while pressing it. An element with a DragThreshold
+// reports no move until the pointer is that far from where it pressed, and
+// then the whole way since it pressed, so that what follows the pointer
+// does not stay behind by the threshold. Without one, every move counts.
 func (_handle Element) Dragged() (float32, float32, bool) {
 	_node := _handle.node()
 	if _node == nil {

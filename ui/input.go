@@ -244,9 +244,18 @@ func (rt *engine) pointerMove(x, y float32) {
 	}
 	if rt.pressed != nil && rt.pointerIn {
 		dx, dy := rt.pressed.vector(rt.pointerX, rt.pointerY, x-rt.pointerX, y-rt.pointerY)
-		rt.pressed.dragX += dx
-		rt.pressed.dragY += dy
-		rt.pressed.drag.move(rt.now(), dx, dy, x-rt.pointerX, y-rt.pointerY, rt.pressed.dragDistance())
+		p := rt.pressed
+		was := p.drag.far
+		p.drag.move(rt.now(), dx, dy, x-rt.pointerX, y-rt.pointerY, p.dragDistance())
+		switch {
+		case p.dragSlop == 0 || was:
+			p.dragX += dx
+			p.dragY += dy
+		case p.drag.far:
+			// The press went the distance: Dragged catches up with the
+			// pointer for the moves it held back.
+			p.dragX, p.dragY = p.drag.x, p.drag.y
+		}
 		if rt.pressed.flags&(flagTrackPointer|flagDraggable|flagEditable|flagSelectable) != 0 {
 			rt.requestFrame()
 		} else {
@@ -1339,7 +1348,10 @@ func (e *node) PointerPosition() (x, y float32, over bool) {
 }
 
 // Dragged reports how far the pointer moved in the element's local axes
-// since the last frame while pressing it.
+// since the last frame while pressing it. An element with a DragThreshold
+// reports no move until the pointer is that far from where it pressed, and
+// then the whole way since it pressed, so that what follows the pointer
+// does not stay behind by the threshold. Without one, every move counts.
 func (e *node) Dragged() (dx, dy float32, ok bool) {
 	if !e.hasState() {
 		return 0, 0, false
