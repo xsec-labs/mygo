@@ -118,6 +118,119 @@ func TestDisabledFocusable(t *testing.T) {
 	}
 }
 
+// Everything inside a DisabledFocusable element is disabled and focusable
+// the same way, by the keys and by the pointer.
+func TestDisabledFocusableNested(t *testing.T) {
+	clicks := map[string]int{}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(20).Gap(10).Children(func() {
+			coreColumn(c).Gap(10).DisabledFocusable(true).Children(func() {
+				for _, k := range []string{"inner", "locked"} {
+					b := coreButton(c, k).Label(k)
+					if k == "locked" {
+						b.Disabled(true)
+					}
+					if b.Clicked() {
+						clicks[k]++
+					}
+				}
+				coreRow(c).Children(func() {
+					if coreButton(c, "deep").Label("deep").Clicked() {
+						clicks["deep"]++
+					}
+				})
+			})
+		})
+	}, 300, 300)
+	press := func(label string) {
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q", label)
+		}
+		tt.Press(r.X+r.W/2, r.Y+r.H/2)
+		tt.Release(r.X+r.W/2, r.Y+r.H/2)
+	}
+	tt.Key(0, KeyTab)
+	if !tt.Focused("inner") {
+		t.Error("Tab does not reach a button inside a DisabledFocusable element")
+	}
+	tt.Key(0, KeyTab)
+	if !tt.Focused("deep") {
+		t.Error("Tab skips a button two levels inside a DisabledFocusable element, or stops at the one Disabled inside it")
+	}
+	// The pointer agrees with the keys.
+	press("inner")
+	if !tt.Focused("inner") {
+		t.Error("a click does not focus a button inside a DisabledFocusable element")
+	}
+	press("deep")
+	if !tt.Focused("deep") {
+		t.Error("a click does not focus a button two levels inside a DisabledFocusable element")
+	}
+	press("locked")
+	if tt.Focused("locked") {
+		t.Error("a click focuses a button that is Disabled inside a DisabledFocusable element")
+	}
+	tt.Key(0, KeyEnter)
+	for k, n := range clicks {
+		if n != 0 {
+			t.Errorf("%s was clicked %d times inside a DisabledFocusable element", k, n)
+		}
+	}
+}
+
+// A focused DisabledFocusable text input takes no text.
+func TestDisabledFocusableTextInput(t *testing.T) {
+	value := "abc"
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() {
+			coreTextInput(c, &value).Label("field").DisabledFocusable(true)
+		})
+	}, 300, 100)
+	tt.Key(0, KeyTab)
+	if !tt.Focused("field") {
+		t.Fatal("Tab does not reach a DisabledFocusable text input")
+	}
+	tt.Type("xyz")
+	tt.Key(0, KeyBackspace)
+	if value != "abc" {
+		t.Errorf("a DisabledFocusable text input took input: %q", value)
+	}
+}
+
+// The reason a control is off shows as a tip, by the pointer and by the
+// keyboard focus; a Disabled control shows none.
+func TestDisabledFocusableTooltip(t *testing.T) {
+	tt, now := clockTester(func(c *context) {
+		coreColumn(c).Padding(40).Gap(20).Children(func() {
+			coreButton(c, "Save").Label("save").DisabledFocusable(true).Tooltip("Nothing to save")
+			coreButton(c, "Load").Label("load").Disabled(true).Tooltip("Cannot load")
+		})
+	}, 300, 300)
+	tick := ticker(tt, now)
+	tt.Key(0, KeyTab)
+	tick(16 * time.Millisecond)
+	if !tt.HasText("Nothing to save") {
+		t.Error("no tip as the keyboard focus comes to a DisabledFocusable button")
+	}
+	tt.Move(290, 290)
+	tick(time.Second)
+	l, _ := tt.Find("load")
+	tt.Move(l.X+l.W/2, l.Y+l.H/2)
+	tick(time.Second)
+	if tt.HasText("Cannot load") {
+		t.Error("a Disabled button shows its tip")
+	}
+	tt.Move(290, 290)
+	tick(time.Second)
+	s, _ := tt.Find("save")
+	tt.Move(s.X+s.W/2, s.Y+s.H/2)
+	tick(time.Second)
+	if !tt.HasText("Nothing to save") {
+		t.Error("no tip when the pointer rests on a DisabledFocusable button")
+	}
+}
+
 func TestDisabledFocusableReplacedByDisabled(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		coreColumn(c).Padding(20).Children(func() {
@@ -148,6 +261,9 @@ func TestReleaseFocus(t *testing.T) {
 	tt.Key(0, KeyEscape)
 	if tt.Focused("a") || tt.rt.focused != 0 {
 		t.Errorf("the focus stays after ReleaseFocus (focused id %d)", tt.rt.focused)
+	}
+	if tt.rt.focusVisible {
+		t.Error("the focus ring stays after ReleaseFocus")
 	}
 	// Tab starts over from the first.
 	tt.Key(0, KeyTab)

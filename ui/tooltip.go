@@ -155,7 +155,7 @@ func (rt *engine) showTooltip(c *context) uint64 {
 	}
 	tipped := func(id uint64) bool {
 		s := rt.states[id]
-		return s != nil && s.tip && s.flags&flagDisabled == 0
+		return s != nil && s.tip && (s.flags&flagDisabled == 0 || s.disabledFocus)
 	}
 	var hover uint64
 	for _, id := range rt.hover {

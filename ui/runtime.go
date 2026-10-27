@@ -1014,6 +1014,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.popover != nil {
 		s.anchor = e.popover.id
 	}
+	s.tipDelay, s.dragSlop, s.disabledFocus = e.tipDelay, e.dragSlop, e.disabledFocus
 	if e.parent != nil && e.parent.st.flags&flagDisabled != 0 {
 		// Disabled with the element around it, which may have been
 		// disabled after building it, as a Fieldset.
@@ -1023,7 +1024,6 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.flags |= flagDisabled
 	}
 	s.cursor, s.tip = e.cursor, e.tip
-	s.tipDelay, s.dragSlop, s.disabledFocus = e.tipDelay, e.dragSlop, e.disabledFocus
 	s.webView = e.webView
 	s.role = e.role
 	s.input, s.caret, s.takesText, s.noIME = e.inputFn, e.caret, e.takesText, e.noIME
