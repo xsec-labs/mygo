@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -318,8 +319,12 @@ func TestContentWindowWebViewInertKeyboard(t *testing.T) {
 	waitForPage(t, v.Page(), "!document.hasFocus()")
 	// Asked for, it takes none either.
 	v.Focus()
-	if focus, err := mygo.EvalAs[bool](v.Page(), "document.hasFocus()"); err != nil || focus {
-		t.Errorf("an inert web view asked for the keyboard has it: %v (%v)", focus, err)
+	// The keyboard comes to a page a moment after it is asked for, so it is
+	// looked for over a while, not once.
+	for end := time.Now().Add(300 * time.Millisecond); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if focus, err := mygo.EvalAs[bool](v.Page(), "document.hasFocus()"); err != nil || focus {
+			t.Fatalf("an inert web view asked for the keyboard has it: %v (%v)", focus, err)
+		}
 	}
 
 	hidden.Store(false)

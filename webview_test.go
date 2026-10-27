@@ -320,9 +320,12 @@ func TestWebViewInertKeepsNoKeyboard(t *testing.T) {
 	}
 	// Nor does it take it when asked.
 	v.Focus()
+	if fv.Focused {
+		t.Error("Focus gave an inert web view the keyboard")
+	}
 	fv.TabInto(false)
 	if fv.Focused {
-		t.Error("an inert web view took the keyboard when asked")
+		t.Error("TabInto gave an inert web view the keyboard")
 	}
 
 	hidden = false
