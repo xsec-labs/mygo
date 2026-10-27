@@ -44,8 +44,12 @@ it was.
 
 A drag starts once the pointer moves 4 DIPs from where it pressed.
 `DragThreshold(dips)` sets that distance for an element: for the value it
-drags, for the movement `Draggable` and `Dragged` follow, and for the rows of
-a list or grid it reorders.
+drags, for the movement `Draggable` follows, and for the rows of a list or
+grid it reorders. `Dragged` follows it only for an element that sets one:
+until the pointer is that far from where it pressed it reports no move (the
+press still counts as held), then the whole way since it pressed, so that a
+handle keeps under the pointer. Without `DragThreshold`, `Dragged` reports
+every move, as split bars and table column edges need.
 
 ## Reordering
 
