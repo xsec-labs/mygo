@@ -350,3 +350,48 @@ func TestDraggedThreshold(t *testing.T) {
 		})
 	}
 }
+
+// A press that ends before the threshold, by release or by the window
+// losing the pointer, delivers nothing, and the next press starts over:
+// it is held back by the threshold again, and catches up only with its own
+// moves.
+func TestDraggedThresholdEndsWithPress(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		end  func(tt *Tester, x, y float32)
+	}{
+		{"release", func(tt *Tester, x, y float32) { tt.Release(x, y) }},
+		{"window loses focus", func(tt *Tester, x, y float32) { tt.SetFocused(false); tt.SetFocused(true) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var sum float32
+			tt := coreNewTester(func(c *context) {
+				coreColumn(c).Padding(20).Children(func() {
+					dx, _, _ := coreBox(c).Size(100, 40).Label("Handle").DragThreshold(8).Dragged()
+					sum += dx
+				})
+			}, 300, 200)
+			r, _ := tt.Find("Handle")
+			x, y := r.X+10, r.Y+10
+
+			tt.Press(x, y)
+			tt.Move(x+5, y)
+			tc.end(tt, x+5, y)
+			if sum != 0 {
+				t.Fatalf("a press ending inside the threshold: Dragged added up to %v, want 0", sum)
+			}
+
+			// The 5 DIPs of the first press do not count for the second.
+			tt.Press(x+5, y)
+			tt.Move(x+8, y)
+			if sum != 0 {
+				t.Errorf("3 DIPs into the next press: Dragged added up to %v, want 0", sum)
+			}
+			tt.Move(x+15, y)
+			if sum != 10 {
+				t.Errorf("10 DIPs into the next press: Dragged added up to %v, want 10", sum)
+			}
+			tt.Release(x+15, y)
+		})
+	}
+}
