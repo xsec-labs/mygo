@@ -77,7 +77,7 @@ Next to the installers of each platform it writes:
 - [delta updates](#delta-updates) from the versions before, such as
   `my-app-1.1.0-to-1.2.0-darwin-arm64.delta`, and
 - `update-darwin-arm64.json`, the manifest: the version, its release
-  notes, the date, and the URL, size and signature of the archive and of
+  notes, the date, and the URL, size and signatures of the archive and of
   each delta.
 
 Without a key, `mygo build` builds the apps and skips the update files,
@@ -142,6 +142,25 @@ uploaded with `Cache-Control: no-cache`, so a CDN checks them again.
 The bucket is named in the host name of requests on Amazon S3 and in their
 path with `endpoint`; set `pathStyle` to `false` for services that only
 take it in the host name, or to `true` to force the path.
+
+## What the signature covers
+
+The manifest is served over HTTPS but not signed itself, so each file of an
+update carries a signature over its contents *and* what the manifest says
+about it: that it is an archive or a delta, the target it is built for
+(`darwin-arm64`), the version it makes and, for a delta, the version it is
+made from (`bound` in the manifest). An app checks that one, so whoever
+serves the manifest cannot publish an older release, which is signed too, as
+a newer version, nor one platform's archive for another's. Apps also update
+only to a version newer than their own.
+
+Builds from before this signed only the contents of a file. `mygo build`
+still writes that signature (`signature`) next to the bound one, so apps
+that old keep updating, but the app you build now takes no update without a
+bound signature, that is none built with an older `mygo build`. To publish
+one release made with an older build to apps of this one, set
+`updates.unboundSignatures` in the apps you build for the changeover and
+unset it in the next.
 
 ## Delta updates
 

@@ -351,6 +351,33 @@ func TestWriteDeltas(t *testing.T) {
 		if err := json.Unmarshal(data, &m); err != nil {
 			t.Fatal(err)
 		}
+		// The signatures cover the version and the target the app is built
+		// for: the archive's, and each delta's, which also covers where it
+		// is made from.
+		archive, err := os.ReadFile(filepath.Join(stage, filepath.Base(m.URL)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(archive)
+		if err := update.VerifyBound(pub, update.KindArchive, "linux-amd64", "1.2.0", "", sum[:], m.Bound); err != nil {
+			t.Errorf("the archive's bound signature: %v", err)
+		}
+		if err := update.Verify(pub, sum[:], m.Signature); err != nil {
+			t.Errorf("the archive's signature for apps from before versions were signed: %v", err)
+		}
+		for _, d := range m.Deltas {
+			data, err := os.ReadFile(filepath.Join(stage, filepath.Base(d.URL)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha256.Sum256(data)
+			if err := update.VerifyBound(pub, update.KindDelta, "linux-amd64", "1.2.0", d.From, sum[:], d.Bound); err != nil {
+				t.Errorf("the delta from %s: bound signature: %v", d.From, err)
+			}
+			if update.VerifyBound(pub, update.KindDelta, "linux-amd64", "1.2.0", "1.0.5", sum[:], d.Bound) == nil {
+				t.Errorf("the delta from %s: its signature stands for another version to start from", d.From)
+			}
+		}
 		// Each delta makes the new version of the old.
 		for _, d := range m.Deltas {
 			old := filepath.Join(t.TempDir(), "old")
@@ -450,5 +477,22 @@ func TestPublishGitHub(t *testing.T) {
 	b, _ = os.ReadFile(calls)
 	if lines := strings.Split(strings.TrimSpace(string(b)), "\n"); len(lines) != 4 || !strings.HasPrefix(lines[1], "release create desktop-v1.2.0 --repo me/app --draft") || !strings.HasSuffix(lines[1], " --latest=false") {
 		t.Errorf("gh calls:\n%s", b)
+	}
+}
+
+// The apps are built with the target their signatures cover, and with the
+// switch to accept updates signed without a version only when asked.
+func TestUpdateFlagsCarryTarget(t *testing.T) {
+	c := &Config{Version: "1.2.0", Updates: &Updates{PublicKey: "key", URL: "https://example.com/app"}}
+	flags := updateFlags(c, "darwin-arm64")
+	if !strings.Contains(flags, "packageUpdateTarget=darwin-arm64") {
+		t.Errorf("flags %q carry no target", flags)
+	}
+	if strings.Contains(flags, "packageUpdateUnbound") {
+		t.Errorf("flags %q accept unbound signatures by default", flags)
+	}
+	c.Updates.UnboundSignatures = true
+	if flags := updateFlags(c, "linux-amd64"); !strings.Contains(flags, "packageUpdateUnbound=1") || !strings.Contains(flags, "packageUpdateTarget=linux-amd64") {
+		t.Errorf("flags %q", flags)
 	}
 }

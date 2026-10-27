@@ -159,6 +159,10 @@ export interface UpdatesConfig {
   changelog?: string;
   /** How many earlier versions get a delta update, a smaller download of what changed (default: `3`; `0` for none). */
   deltas?: number;
+  /**
+   * Make the app accept updates whose signature covers no version, as `mygo build` made them before it signed versions; with it anyone who serves the manifest can publish an old release as a newer version. Only for the releases of the changeover (default: `false`).
+   */
+  unboundSignatures?: boolean;
 }
 
 /**

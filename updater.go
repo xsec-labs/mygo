@@ -32,6 +32,12 @@ import (
 var (
 	packageUpdateFeed string
 	packageUpdateKey  string
+	// packageUpdateTarget is the target the app is built for, such as
+	// darwin-arm64, which bound signatures cover; packageUpdateUnbound,
+	// "1" for an app that still accepts updates whose signature covers no
+	// version (updates.unboundSignatures).
+	packageUpdateTarget  string
+	packageUpdateUnbound string
 )
 
 // startExe is the executable the app started from. On Linux, os.Executable
@@ -194,7 +200,7 @@ func installUpdate(ctx context.Context, m update.Manifest, key, current, target 
 	}
 
 	if d := m.Delta(current); d != nil {
-		err := applyDelta(ctx, *d, pub, m.Version, target, work, unpacked, progress)
+		err := applyDelta(ctx, *d, signatureCheck(pub, update.KindDelta, m.Version, d.From, d.Signature, d.Bound), m.Version, target, work, unpacked, progress)
 		if err == nil {
 			return swap(unpacked, target)
 		}
@@ -211,7 +217,7 @@ func installUpdate(ctx context.Context, m update.Manifest, key, current, target 
 		return fmt.Errorf("invalid size %d", m.Size)
 	}
 	archive := filepath.Join(work, "update.tar.gz")
-	if err := download(ctx, m.URL, m.Size, m.Signature, pub, archive, progress); err != nil {
+	if err := download(ctx, m.URL, m.Size, signatureCheck(pub, update.KindArchive, m.Version, "", m.Signature, m.Bound), archive, progress); err != nil {
 		return err
 	}
 	f, err := os.Open(archive)
@@ -229,12 +235,12 @@ func installUpdate(ctx context.Context, m update.Manifest, key, current, target 
 // applyDelta downloads the delta d into work and makes the new version of
 // the app at target from it, in dir: its bundle on macOS, in dir too, as
 // the bundle of an archive is.
-func applyDelta(ctx context.Context, d update.Delta, pub ed25519.PublicKey, version, target, work, dir string, progress func(downloaded, total int64)) error {
+func applyDelta(ctx context.Context, d update.Delta, check func(digest []byte) error, version, target, work, dir string, progress func(downloaded, total int64)) error {
 	if d.Size <= 0 || d.Size > update.MaxArchiveSize {
 		return fmt.Errorf("invalid size %d", d.Size)
 	}
 	path := filepath.Join(work, "update.delta")
-	if err := download(ctx, d.URL, d.Size, d.Signature, pub, path, progress); err != nil {
+	if err := download(ctx, d.URL, d.Size, check, path, progress); err != nil {
 		return err
 	}
 	f, err := os.Open(path)
@@ -253,7 +259,7 @@ func applyDelta(ctx context.Context, d update.Delta, pub ed25519.PublicKey, vers
 
 // download fetches url into the file path and checks its size and
 // signature.
-func download(ctx context.Context, url string, size int64, signature string, pub ed25519.PublicKey, path string, progress func(downloaded, total int64)) error {
+func download(ctx context.Context, url string, size int64, check func(digest []byte) error, path string, progress func(downloaded, total int64)) error {
 	body, err := httpGet(ctx, url)
 	if err != nil {
 		return err
@@ -274,7 +280,26 @@ func download(ctx context.Context, url string, size int64, signature string, pub
 	if n != size {
 		return fmt.Errorf("downloaded %d bytes, want %d", n, size)
 	}
-	return update.Verify(pub, sum.Sum(nil), signature)
+	return check(sum.Sum(nil))
+}
+
+// signatureCheck returns the check of the digest of an update file of kind
+// that makes version (from the version from, for a delta): its bound
+// signature, which covers the version and the app's target, so that a file
+// signed for one version cannot be published as a newer one. An update
+// without one, as `mygo build` of before it made, is refused unless the
+// app was built to accept it (updates.unboundSignatures); where there is
+// one, the signature that covers no version is never looked at.
+func signatureCheck(pub ed25519.PublicKey, kind, version, from, legacy, bound string) func(digest []byte) error {
+	return func(digest []byte) error {
+		switch {
+		case bound != "":
+			return update.VerifyBound(pub, kind, packageUpdateTarget, version, from, digest, bound)
+		case packageUpdateUnbound == "1":
+			return update.Verify(pub, digest, legacy)
+		}
+		return errors.New("the update's signature does not cover its version: publish it with a newer mygo build, or build the app with updates.unboundSignatures")
+	}
 }
 
 // swapBundle replaces the bundle at target with the one in dir.
