@@ -41,6 +41,15 @@ type envOptions struct {
 // 142 the Chromium switch --force-webrtc-ip-handling-policy is accepted and
 // does nothing (a STUN server on loopback still gets the packets), so both
 // are passed, the second for runtimes that honor it.
+//
+// Two limits. The arguments are part of the environment, so every process
+// that opens the same user data folder must create its environment with the
+// same arguments: another process that does not, or that passes others, makes
+// the creation of the later environment fail (0x8007139F). And a frame the
+// page makes without navigating it (about:blank, srcdoc) does not run the
+// script of an untrusted page on WebView2, so for it this policy is the only
+// guard against peer connections, as the Permissions-Policy header is the one
+// for screen capture and geolocation there.
 const browserArguments = "--webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy=disable_non_proxied_udp"
 
 var (
