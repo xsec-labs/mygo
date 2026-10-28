@@ -469,13 +469,14 @@ func popover(c *context, anchor *node, open *bool, modal bool, fn func(panel *no
 // panel, and the panel, and builds the panel's content. Clicking the
 // backdrop or pressing Escape sets *open to false, which Dismissed
 // reports. It returns the panel, or nil while closed; Modal is DialogBase
-// with the theme's look.
+// with the theme's look. The dialog shows in LayerDialog, above the drawers
+// (OverlayAt) and the popovers of the content, whenever each was built.
 func coreDialogBase(c *context, open *bool, fn func(backdrop, panel *node)) *node {
 	if !*open {
 		return nil
 	}
 	var panel *node
-	coreOverlay(c, func() {
+	coreOverlayAt(c, LayerDialog, func() {
 		back := coreBox(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().Modal()
 		back.flags |= flagClickable
 		dismissed := back.Clicked() || back.OverlayShortcut(0, KeyEscape)

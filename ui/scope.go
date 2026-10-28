@@ -113,7 +113,7 @@ func (rt *engine) scopeOf(id uint64) uint64 {
 // top) first, and reports whether such a key was delivered to it.
 func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	id := e.id
-	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key, overlay: true, serial: e.serial})
+	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key, overlay: true, rank: overlayRank(e)})
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
@@ -202,7 +202,8 @@ func (e *node) OverlayShortcut(mods Modifiers, key Key) bool {
 // PressedOutside reports whether the pointer went down since the last
 // frame outside the element: on neither it, nor what it holds, nor the
 // element it is attached to (AttachTo), nor the overlays attached to
-// elements inside it, as the popover of one of its buttons. A popover
+// elements inside it, as the popover of one of its buttons, nor, for an
+// overlay, what is in an overlay of a higher Layer. A popover
 // closes then, the press going on to what is under the pointer, as
 // PopoverBase does. The last press decides: one on the button opening a
 // popover after a press elsewhere, as on a web view's page, in the same
@@ -212,11 +213,24 @@ func (e *node) PressedOutside() bool {
 		return false
 	}
 	rt := e.c.rt
-	if rt.pressedWithin(rt.downs[len(rt.downs)-1], e) {
+	down := rt.downs[len(rt.downs)-1]
+	if rt.pressedWithin(down, e) || rt.pressedAbove(down, e) {
 		return false
 	}
 	rt.consumed = true
 	return true
+}
+
+// pressedAbove reports whether element id of the last frame is in an
+// overlay of a higher layer than the overlay e is in: a press in a dialog
+// is not one outside the drawer below it, which stays open under it.
+func (rt *engine) pressedAbove(id uint64, e *node) bool {
+	own := uint8(0)
+	for p := e; p != nil && own == 0; p = p.parent {
+		own = p.layer
+	}
+	s := rt.states[id]
+	return own != 0 && s != nil && s.layer > own
 }
 
 // pressedWithin reports whether element id of the last frame is e, inside it,

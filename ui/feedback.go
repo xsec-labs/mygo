@@ -179,7 +179,7 @@ func coreAlertDialog(c *context, open *bool, title, message string, buttons ...s
 	}
 	t := c.theme
 	chosen, dismissed := -1, false
-	coreOverlay(c, func() {
+	coreOverlayAt(c, LayerDialog, func() {
 		back := coreBox(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().Background(RGBA(0, 0, 0, 0.4)).Modal()
 		dismissed = back.OverlayShortcut(0, KeyEscape)
 		back.Children(func() {

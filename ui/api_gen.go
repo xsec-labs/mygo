@@ -1004,7 +1004,8 @@ func DateInput(c *Context, date *time.Time) Element {
 // panel, and the panel, and builds the panel's content. Clicking the
 // backdrop or pressing Escape sets *open to false, which Dismissed
 // reports. It returns the panel, or nil while closed; Modal is DialogBase
-// with the theme's look.
+// with the theme's look. The dialog shows in LayerDialog, above the drawers
+// (OverlayAt) and the popovers of the content, whenever each was built.
 func DialogBase(c *Context, open *bool, fn func(backdrop Element, panel Element)) Element {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -1443,12 +1444,27 @@ func OutlineTable[K comparable](c *Context, s *OutlineState[K], columns []TableC
 // with Absolute, Left and Top, in DIPs relative to the window, or beside
 // another element with AttachTo. Each, as it goes with the focus in it,
 // gives the focus back to the element that had it as it came.
+//
+// Built inside another overlay (a popover opened from a dialog), or in a row
+// of a list inside one, the overlay is in the layer of that one, after it;
+// anywhere else it is in LayerDefault. OverlayAt chooses the layer.
 func Overlay(c *Context, fn func()) {
 	_ctx := c.build()
 	if _ctx == nil {
 		return
 	}
 	coreOverlay(_ctx, fn)
+}
+
+// OverlayAt builds fn's elements above the rest of the window, as Overlay
+// does, in layer: a drawer built after a dialog still shows below it, the
+// keyboard is the dialog's, and Escape closes the dialog first.
+func OverlayAt(c *Context, layer Layer, fn func()) {
+	_ctx := c.build()
+	if _ctx == nil {
+		return
+	}
+	coreOverlayAt(_ctx, layer, fn)
 }
 
 // Popover shows fn's elements in a panel below anchor while *open is
@@ -4884,7 +4900,8 @@ func (_handle Element) Pressed() bool {
 // PressedOutside reports whether the pointer went down since the last
 // frame outside the element: on neither it, nor what it holds, nor the
 // element it is attached to (AttachTo), nor the overlays attached to
-// elements inside it, as the popover of one of its buttons. A popover
+// elements inside it, as the popover of one of its buttons, nor, for an
+// overlay, what is in an overlay of a higher Layer. A popover
 // closes then, the press going on to what is under the pointer, as
 // PopoverBase does. The last press decides: one on the button opening a
 // popover after a press elsewhere, as on a web view's page, in the same

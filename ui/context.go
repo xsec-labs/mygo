@@ -30,8 +30,10 @@ type context struct {
 	titleBar TitleBar
 	vibrancy bool
 	overlay  *node
-	nextKey  any
-	keySet   bool
+	// layer is the Layer of the overlay being built (coreOverlayAt).
+	layer   Layer
+	nextKey any
+	keySet  bool
 	// tree is the Tree being built, for its items.
 	tree *treeBuild
 	// buttons is how the buttons being built look, in a toolbar or a
@@ -231,6 +233,9 @@ func (c *context) newElement(k kind) *node {
 	p := c.parent
 	e.id = mix(p.id, uint64(p.nchild)+uint64(k)<<56)
 	e.dir = p.dir &^ dirSet
+	if p == c.overlay {
+		e.layer = uint8(c.layer) + 1
+	}
 	keyed := c.keySet
 	if c.keySet {
 		e.id = keyedID(p.id, c.nextKey)
@@ -655,6 +660,9 @@ type state struct {
 	scope, anchor uint64
 	// page is the Router's page the element was in, 0 for none.
 	page uint64
+	// layer is the layer plus one of the overlay the element was in, 0 for
+	// none (node.layer).
+	layer uint8
 	// trec is what the element's Transition keeps, by the engine's
 	// transitions, when it has one.
 	trec *transition

@@ -562,21 +562,58 @@ func (e *node) intrinsicSize() (w, h float32) {
 // Fit sets how an Image fills its box.
 func (e *node) Fit(f Fit) *node { e.fit = f; return e }
 
+// Layer is where an overlay shows among the others: what is in a higher
+// layer shows above what is in a lower one, however late either was built,
+// and within a layer the overlay built last shows on top. A window has a
+// few layers, one for each kind of surface that covers the content: the
+// default one is where popovers, menus and tips show; a drawer shows above
+// them, a dialog above the drawer, and toasts above all.
+type Layer uint8
+
+const (
+	// LayerDefault is where Overlay builds, and so the popovers, menus and
+	// tips of the window's content.
+	LayerDefault Layer = iota
+	// LayerDrawer is for panels over the content that the user can still
+	// leave open while a dialog asks something of them: a drawer.
+	LayerDrawer
+	// LayerDialog is where dialogs (DialogBase, Modal, AlertDialog) show,
+	// above the drawers.
+	LayerDialog
+	// LayerToast is where toasts show: above the dialogs, as they do not
+	// take the keyboard or the pointer from them.
+	LayerToast
+
+	layerCount
+)
+
 // Overlay builds fn's elements above the rest of the window. Place them
 // with Absolute, Left and Top, in DIPs relative to the window, or beside
 // another element with AttachTo. Each, as it goes with the focus in it,
 // gives the focus back to the element that had it as it came.
+//
+// Built inside another overlay (a popover opened from a dialog), or in a row
+// of a list inside one, the overlay is in the layer of that one, after it;
+// anywhere else it is in LayerDefault. OverlayAt chooses the layer.
 func coreOverlay(c *context, fn func()) {
-	saved := c.parent
+	coreOverlayAt(c, c.inheritedLayer(), fn)
+}
+
+// OverlayAt builds fn's elements above the rest of the window, as Overlay
+// does, in layer: a drawer built after a dialog still shows below it, the
+// keyboard is the dialog's, and Escape closes the dialog first.
+func coreOverlayAt(c *context, layer Layer, fn func()) {
+	layer = min(layer, layerCount-1)
+	saved, savedLayer := c.parent, c.layer
 	o := c.overlayRoot()
-	c.parent = o
+	c.parent, c.layer = o, layer
 	last := o.last
 	// What fn builds reads in the direction of where it was asked for.
 	dir := o.dir
 	o.dir = saved.dir &^ dirSet
 	fn()
 	o.dir = dir
-	c.parent = saved
+	c.parent, c.layer = saved, savedLayer
 	first := o.first
 	if last != nil {
 		first = last.next
@@ -587,6 +624,74 @@ func coreOverlay(c *context, fn func()) {
 	for e := first; e != nil; e = e.next {
 		c.rt.openOverlay(e)
 	}
+}
+
+// inheritedLayer returns the layer of the overlay the elements being built
+// are in, LayerDefault when they are in none.
+func (c *context) inheritedLayer() Layer {
+	if c.overlay == nil {
+		return LayerDefault
+	}
+	for p := c.parent; p != nil; p = p.parent {
+		if p.parent == c.overlay {
+			return Layer(p.layer - 1)
+		}
+	}
+	return LayerDefault
+}
+
+// sortLayers puts the overlays in the order they show: by layer, those of
+// a layer in the order they were built. Not a sort when it is the order
+// already, as it is for a window with overlays of one layer.
+func (o *node) sortLayers() {
+	ordered := true
+	for e := o.first; e != nil && e.next != nil; e = e.next {
+		if e.next.layer < e.layer {
+			ordered = false
+			break
+		}
+	}
+	if ordered {
+		return
+	}
+	var heads, tails [layerCount]*node
+	for e := o.first; e != nil; {
+		next := e.next
+		e.next = nil
+		l := min(max(int(e.layer), 1), int(layerCount)) - 1
+		if tails[l] == nil {
+			heads[l] = e
+		} else {
+			tails[l].next = e
+		}
+		tails[l] = e
+		e = next
+	}
+	o.first, o.last = nil, nil
+	for l := range heads {
+		if heads[l] == nil {
+			continue
+		}
+		if o.first == nil {
+			o.first = heads[l]
+		} else {
+			o.last.next = heads[l]
+		}
+		o.last = tails[l]
+	}
+}
+
+// overlayRank orders overlay e among the others by how late it paints: by
+// layer, then by when it was made.
+func overlayRank(e *node) int64 {
+	layer := int64(0)
+	for p := e; p != nil; p = p.parent {
+		if p.layer != 0 {
+			layer = int64(p.layer)
+			break
+		}
+	}
+	return layer<<32 | int64(e.serial)
 }
 
 // Modal shows a dialog built by fn over a dimmed window while *open is

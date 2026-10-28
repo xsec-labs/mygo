@@ -89,6 +89,7 @@ func layoutTree(root *node, w, h float32) {
 		// what they put above the window is laid out with it.
 		rt.lateInput()
 		if ov := root.c.overlay; ov != nil {
+			ov.sortLayers()
 			if ov.parent == nil {
 				root.add(ov)
 			}
@@ -104,6 +105,9 @@ func layoutTree(root *node, w, h float32) {
 		// Lists resized by their transitions built rows as they laid out
 		// anew.
 		rt.lateInput()
+	}
+	if ov := root.c.overlay; ov != nil {
+		ov.sortLayers() // rows built as the lists laid out may have made overlays
 	}
 	place(root, 0, 0)
 	rt.animateMatches()
