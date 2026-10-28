@@ -634,6 +634,9 @@ func (c *context) inheritedLayer() Layer {
 	}
 	for p := c.parent; p != nil; p = p.parent {
 		if p.parent == c.overlay {
+			if p.layer == 0 {
+				return LayerDefault
+			}
 			return Layer(p.layer - 1)
 		}
 	}

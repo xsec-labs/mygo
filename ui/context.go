@@ -30,10 +30,12 @@ type context struct {
 	titleBar TitleBar
 	vibrancy bool
 	overlay  *node
-	// layer is the Layer of the overlay being built (coreOverlayAt).
-	layer   Layer
-	nextKey any
-	keySet  bool
+	// layer is the Layer of the overlay being built (coreOverlayAt), and
+	// layerKids how many elements each layer has in the overlay layer.
+	layer     Layer
+	layerKids [layerCount]int
+	nextKey   any
+	keySet    bool
 	// tree is the Tree being built, for its items.
 	tree *treeBuild
 	// buttons is how the buttons being built look, in a toolbar or a
@@ -149,6 +151,7 @@ func (c *context) reset(now time.Time, w, h float32) {
 	c.root = root
 	c.parent = root
 	c.overlay = nil
+	c.layerKids = [layerCount]int{}
 }
 
 // finish frees references to elements left out of the frame, including
@@ -234,7 +237,13 @@ func (c *context) newElement(k kind) *node {
 	e.id = mix(p.id, uint64(p.nchild)+uint64(k)<<56)
 	e.dir = p.dir &^ dirSet
 	if p == c.overlay {
+		// Counted by layer: what an overlay of one layer is does not
+		// depend on how many of another are built before it, so a dialog
+		// keeps its identity (its focus, to give back as it closes) as a
+		// drawer built after it comes and goes.
 		e.layer = uint8(c.layer) + 1
+		e.id = mix(p.id, uint64(c.layerKids[c.layer])+uint64(k)<<56+uint64(e.layer)<<48)
+		c.layerKids[c.layer]++
 	}
 	keyed := c.keySet
 	if c.keySet {

@@ -26,6 +26,7 @@ func (l *layersView) buildDrawer(c *context) {
 		back.Children(func() {
 			panel := coreColumn(c).Width(200).FillHeight().Background(RGB(250, 250, 250))
 			panel.Children(func() {
+				coreButton(c, "Drawer close")
 				if coreButton(c, "Drawer action").Clicked() {
 					l.drawerAction++
 				}
@@ -115,8 +116,9 @@ func TestEscapeClosesTheDialogBeforeTheDrawerBelowIt(t *testing.T) {
 func TestFocusReturnsAcrossLayers(t *testing.T) {
 	l := &layersView{}
 	tt := coreNewTester(l.view, 600, 400)
-	// Opened one after the other, in the order that puts the dialog below
-	// the drawer in build order; closed, the focus goes back to what had it.
+	// Opened one after the other, the dialog built before the drawer; closed,
+	// the focus goes back to what had it in the drawer, not to the drawer's
+	// first element, which the drawer's own focus trap would take it to.
 	l.drawer = true
 	tt.Frame()
 	if err := tt.Click("Drawer action"); err != nil {
@@ -262,5 +264,97 @@ func TestToastsShowAboveDialogs(t *testing.T) {
 	}
 	if l.dialogOK != 1 {
 		t.Error("a toast viewport built after the dialog blocked the pointer")
+	}
+}
+
+// A popover of the window's content closes at a press in any overlay above
+// it, a drawer without a backdrop included: only overlays above LayerDefault
+// stay open at a press in a higher layer.
+func TestPopoverOfThePageClosesAtAPressInADrawer(t *testing.T) {
+	pageOpen, drawer, actions := false, false, 0
+	tt := coreNewTester(func(c *context) {
+		page := coreButton(c, "Page button")
+		if page.Clicked() {
+			pageOpen = !pageOpen
+		}
+		corePopover(c, page, &pageOpen, func() { coreButton(c, "Page menu item") })
+		if drawer {
+			coreOverlayAt(c, LayerDrawer, func() {
+				panel := coreColumn(c).Absolute().Right(0).Top(0).Bottom(0).Width(200).Background(RGB(250, 250, 250))
+				panel.Children(func() {
+					if coreButton(c, "Drawer action").Clicked() {
+						actions++
+					}
+				})
+			})
+		}
+	}, 600, 400)
+	tt.Click("Page button")
+	if !pageOpen {
+		t.Fatal("the page's menu did not open")
+	}
+	drawer = true
+	tt.Frame()
+	if err := tt.Click("Drawer action"); err != nil {
+		t.Fatal(err)
+	}
+	if actions != 1 || pageOpen {
+		t.Errorf("a press in the drawer: its button clicked %d times, the page's menu open %v", actions, pageOpen)
+	}
+}
+
+// A drawer stays open at a press in a dialog above it, and a popover opened
+// in the drawer too.
+func TestDrawerAndItsPopoverStayOpenAtAPressInADialog(t *testing.T) {
+	l := &layersView{dialog: true, drawer: true}
+	tt := coreNewTester(l.view, 600, 400)
+	tt.Click("Dialog OK")
+	if !l.drawer {
+		t.Error("a press in the dialog closed the drawer below it")
+	}
+}
+
+// A row a list builds as it lays out, inside a dialog, opens a popover in
+// the dialog's layer: above a drawer built after the dialog, and reachable.
+func TestPopoverInALazyRowOfADialogShowsAboveALaterDrawer(t *testing.T) {
+	dialog, drawer, menu := true, true, false
+	var picked []string
+	state := ListState{}
+	tt := coreNewTester(func(c *context) {
+		coreModal(c, &dialog, func() {
+			coreList(c, &state, 20, func(i int) {
+				if i != 0 {
+					coreText(c, "row").Height(20)
+					return
+				}
+				more := coreButton(c, "Row menu")
+				if more.Clicked() {
+					menu = !menu
+				}
+				corePopover(c, more, &menu, func() {
+					if coreButton(c, "Row menu item").Clicked() {
+						picked = append(picked, "row item")
+					}
+				})
+			}).Height(200)
+		})
+		if drawer {
+			coreOverlayAt(c, LayerDrawer, func() {
+				back := coreRow(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Justify(End).Background(RGBA(0, 0, 0, 0.2)).Modal()
+				back.Children(func() { coreColumn(c).Width(200).FillHeight().Children(func() { coreButton(c, "Drawer action") }) })
+			})
+		}
+	}, 600, 400)
+	if err := tt.Click("Row menu"); err != nil {
+		t.Fatal(err)
+	}
+	if !menu || !tt.HasText("Row menu item") {
+		t.Fatal("the menu in the row did not open")
+	}
+	if err := tt.Click("Row menu item"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(picked, []string{"row item"}) {
+		t.Errorf("the item of the menu opened in a row of the dialog's list was not reached: %q", picked)
 	}
 }

@@ -2898,9 +2898,15 @@ either.
   `Overlay` inside another overlay, or in a row of a list inside one, is in
   the layer of that one (`inheritedLayer`): a menu opened in a dialog shows
   above a drawer built later; one opened by the content is below it, and
-  inert behind a dialog. A press in a higher layer is not one outside a
-  lower overlay (`PressedOutside`, `pressedAbove`): a drawer stays open as
-  its dialog is answered. Overlays register Escape as overlay shortcuts
+  inert behind a dialog. An overlay above `LayerDefault` does not take a
+  press in a higher layer for one outside it (`PressedOutside`,
+  `pressedAbove`): a drawer stays open as its dialog is answered; the
+  popovers of the content close at any press outside them. Elements built
+  straight into the overlay layer are identified by their place among those
+  of their layer, so a dialog is the same element whether or not a drawer
+  is built before it. A focus left in an overlay that just closed is not
+  taken into the modal beneath (`arrangeFocus`) before it is given back
+  (`restoreFocus`). Overlays register Escape as overlay shortcuts
   (`OverlayShortcut`), which the keys the focus and the elements around it
   leave reach, the one that paints last (the overlay on top, `overlayRank`)
   first. Each element

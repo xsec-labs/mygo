@@ -847,6 +847,10 @@ func (rt *engine) prune() {
 	if s := rt.states[rt.focused]; s != nil && (s.seen != rt.frame || s.pass != rt.pass) {
 		rt.focused = 0
 	}
+	// Nowhere to give it back to, it goes into the dialog on top.
+	if rt.focused == 0 {
+		rt.focusIntoModal()
+	}
 }
 
 // maxFree is how many pruned states the engine keeps for new elements.

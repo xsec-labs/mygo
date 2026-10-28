@@ -50,6 +50,19 @@ func (rt *engine) arrangeFocus() {
 	if slices.ContainsFunc(scopes, func(sc focusScope) bool { return sc.anchor != 0 }) {
 		rt.placePopovers(order, scopes)
 	}
+	// A focus in what the frame did not build is the one of an overlay that
+	// just closed: it goes back to the element that had it as the overlay
+	// opened (restoreFocus), which may be in another modal, before it is
+	// taken into the one on top.
+	if s := rt.states[rt.focused]; s != nil && (s.seen != rt.frame || s.pass != rt.pass) {
+		return
+	}
+	rt.focusIntoModal()
+}
+
+// focusIntoModal moves the focus into the dialog on top when it is out of
+// it.
+func (rt *engine) focusIntoModal() {
 	if m := rt.modal; m != 0 && rt.scopeOf(rt.focused) != m {
 		for i, sc := range rt.focusScopes {
 			if sc.modal == m {
@@ -222,15 +235,17 @@ func (e *node) PressedOutside() bool {
 }
 
 // pressedAbove reports whether element id of the last frame is in an
-// overlay of a higher layer than the overlay e is in: a press in a dialog
-// is not one outside the drawer below it, which stays open under it.
+// overlay of a higher layer than the overlay e is in, e being in one above
+// LayerDefault: a press in a dialog is not one outside the drawer below it,
+// which stays open under it. Popovers, menus and tips of the content, in
+// LayerDefault, close at any press outside them.
 func (rt *engine) pressedAbove(id uint64, e *node) bool {
 	own := uint8(0)
 	for p := e; p != nil && own == 0; p = p.parent {
 		own = p.layer
 	}
 	s := rt.states[id]
-	return own != 0 && s != nil && s.layer > own
+	return own > uint8(LayerDefault)+1 && s != nil && s.layer > own
 }
 
 // pressedWithin reports whether element id of the last frame is e, inside it,
