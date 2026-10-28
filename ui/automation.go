@@ -123,6 +123,9 @@ type AutomationSnapshot struct {
 	Focus uint64
 	Nodes []AutomationNode
 	// Announcements are the texts the frame asked screen readers to read.
+	// The window clears them when the frame ends, so only a snapshot a Wait
+	// condition sees (or returns) carries them; Snapshot, taken between
+	// frames, finds none.
 	Announcements []string
 }
 
@@ -258,6 +261,12 @@ func (a *Automation) do(ctx gocontext.Context, fn func() error) error {
 	a.h.conn.Post(func() {
 		if a.h.detached {
 			done <- ErrAutomationClosed
+			return
+		}
+		// A caller that gave up before the main thread got here must not leave a watch behind or
+		// have its event injected after it was told the call failed.
+		if err := ctx.Err(); err != nil {
+			done <- err
 			return
 		}
 		done <- fn()

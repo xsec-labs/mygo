@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -227,6 +228,33 @@ func TestAutomationWaitEndsWithTheContext(t *testing.T) {
 	_, err := a.Wait(ctx, func(s AutomationSnapshot) bool { return s.has("never shown") })
 	if !errors.Is(err, gocontext.DeadlineExceeded) {
 		t.Fatalf("got %v, want the deadline", err)
+	}
+}
+
+func TestAutomationCallerThatGaveUpLeavesNoWatchBehind(t *testing.T) {
+	a, conn := openAutomated(t, &automatedApp{})
+	gate := make(chan struct{})
+	conn.Post(func() { <-gate }) // the main thread is busy until the caller has given up
+	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), 50*time.Millisecond)
+	defer cancel()
+	var calls atomic.Int32
+	_, err := a.Wait(ctx, func(AutomationSnapshot) bool { calls.Add(1); return false })
+	if !errors.Is(err, gocontext.DeadlineExceeded) {
+		t.Fatalf("got %v, want the deadline", err)
+	}
+	close(gate)
+	flushed := make(chan struct{})
+	conn.Post(func() { close(flushed) })
+	<-flushed
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("the condition of a Wait that had ended ran %d times", n)
+	}
+	var watching int
+	ran := make(chan struct{})
+	conn.Post(func() { watching = len(a.h.watches); close(ran) })
+	<-ran
+	if watching != 0 {
+		t.Fatalf("%d watches left behind", watching)
 	}
 }
 
