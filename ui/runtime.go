@@ -349,6 +349,9 @@ type engine struct {
 	// the page around the elements being committed.
 	kept       map[uint64]bool
 	commitPage uint64
+	// commitLayer is the layer plus one of the overlay being committed
+	// (node.layer), 0 for the window's content.
+	commitLayer uint8
 	// announcements are the texts for assistive technology to read out
 	// (Context.Announce).
 	announcements []string
@@ -429,9 +432,9 @@ type shortcutReg struct {
 	mods Modifiers
 	key  Key
 	// overlay marks the registration of an overlay (overlayShortcut),
-	// made serial-th in its pass: the overlay made last is on top.
+	// shown at rank: the overlay on top has the greatest (overlayRank).
 	overlay bool
-	serial  int32
+	rank    int64
 	// retried marks a key delivered, or left unrouted, in the frame after
 	// the one it came to (settleKeys): it is not retried again.
 	retried bool
@@ -542,6 +545,7 @@ func (rt *engine) runFrame() {
 		}
 		rt.buildToasts(&rt.c)
 		if ov := rt.c.overlay; ov != nil {
+			ov.sortLayers()
 			rt.c.root.add(ov)
 		}
 		if rt.insp.open {
@@ -843,6 +847,10 @@ func (rt *engine) prune() {
 	if s := rt.states[rt.focused]; s != nil && (s.seen != rt.frame || s.pass != rt.pass) {
 		rt.focused = 0
 	}
+	// Nowhere to give it back to, it goes into the dialog on top.
+	if rt.focused == 0 {
+		rt.focusIntoModal()
+	}
 }
 
 // maxFree is how many pruned states the engine keeps for new elements.
@@ -966,7 +974,7 @@ func (rt *engine) commit(root *node, w, h float32) {
 	rt.webPlaces = rt.webPlaces[:0]
 	rt.maxButton = Rect{}
 	rt.focusOrder, rt.focusScopes = rt.focusOrder[:0], rt.focusScopes[:0]
-	rt.modal, rt.modalLayer, rt.commitScope, rt.commitPage = 0, 0, focusScope{}, 0
+	rt.modal, rt.modalLayer, rt.commitScope, rt.commitPage, rt.commitLayer = 0, 0, focusScope{}, 0, 0
 	if rt.groups == nil {
 		rt.groups = map[uint64]groupInfo{}
 	}
@@ -985,10 +993,14 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.kind == kindText && e.first != nil && !inline {
 		placeInline(e, e, 0)
 	}
-	saved, savedPage := rt.enterScope(e), rt.commitPage
-	defer func() { rt.commitScope, rt.commitPage = saved, savedPage }()
+	saved, savedPage, savedLayer := rt.enterScope(e), rt.commitPage, rt.commitLayer
+	defer func() { rt.commitScope, rt.commitPage, rt.commitLayer = saved, savedPage, savedLayer }()
 	s := e.st
 	s.page = rt.commitPage
+	if e.layer != 0 {
+		rt.commitLayer = e.layer
+	}
+	s.layer = rt.commitLayer
 	if e.flags&flagPage != 0 {
 		rt.commitPage = e.id
 	}

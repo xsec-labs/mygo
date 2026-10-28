@@ -943,11 +943,11 @@ func routeKey(regs []shortcutReg, chain []uint64, k keyEvent) (target uint64, fo
 			}
 		}
 	}
-	// The overlay on top: the one made last, as it paints last.
-	var top int32 = -1
+	// The overlay on top: the one that paints last (overlayRank).
+	var top int64 = -1
 	for _, r := range regs {
-		if r.overlay && r.mods == k.mods && r.key == k.key && r.serial >= top {
-			target, found, top = r.id, true, r.serial
+		if r.overlay && r.mods == k.mods && r.key == k.key && r.rank >= top {
+			target, found, top = r.id, true, r.rank
 		}
 	}
 	if found {

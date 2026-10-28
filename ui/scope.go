@@ -50,6 +50,19 @@ func (rt *engine) arrangeFocus() {
 	if slices.ContainsFunc(scopes, func(sc focusScope) bool { return sc.anchor != 0 }) {
 		rt.placePopovers(order, scopes)
 	}
+	// A focus in what the frame did not build is the one of an overlay that
+	// just closed: it goes back to the element that had it as the overlay
+	// opened (restoreFocus), which may be in another modal, before it is
+	// taken into the one on top.
+	if s := rt.states[rt.focused]; s != nil && (s.seen != rt.frame || s.pass != rt.pass) {
+		return
+	}
+	rt.focusIntoModal()
+}
+
+// focusIntoModal moves the focus into the dialog on top when it is out of
+// it.
+func (rt *engine) focusIntoModal() {
 	if m := rt.modal; m != 0 && rt.scopeOf(rt.focused) != m {
 		for i, sc := range rt.focusScopes {
 			if sc.modal == m {
@@ -113,7 +126,7 @@ func (rt *engine) scopeOf(id uint64) uint64 {
 // top) first, and reports whether such a key was delivered to it.
 func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	id := e.id
-	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key, overlay: true, serial: e.serial})
+	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key, overlay: true, rank: overlayRank(e)})
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
@@ -124,9 +137,9 @@ func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	return false
 }
 
-// openOverlay notes, as overlay id opens, the element that had the focus,
+// openOverlay notes, as overlay back opens, the element that had the focus,
 // to give it back as the overlay closes (restoreFocus).
-func (rt *engine) openOverlay(back *node) {
+func (rt *engine) openOverlay(back *node, had uint64) {
 	if back.st.born != rt.frame {
 		return
 	}
@@ -134,7 +147,7 @@ func (rt *engine) openOverlay(back *node) {
 		rt.openers = map[uint64]uint64{}
 	}
 	if _, ok := rt.openers[back.id]; !ok {
-		rt.openers[back.id] = rt.focused
+		rt.openers[back.id] = had
 	}
 }
 
@@ -202,7 +215,8 @@ func (e *node) OverlayShortcut(mods Modifiers, key Key) bool {
 // PressedOutside reports whether the pointer went down since the last
 // frame outside the element: on neither it, nor what it holds, nor the
 // element it is attached to (AttachTo), nor the overlays attached to
-// elements inside it, as the popover of one of its buttons. A popover
+// elements inside it, as the popover of one of its buttons, nor, for an
+// overlay, what is in an overlay of a higher Layer. A popover
 // closes then, the press going on to what is under the pointer, as
 // PopoverBase does. The last press decides: one on the button opening a
 // popover after a press elsewhere, as on a web view's page, in the same
@@ -212,11 +226,26 @@ func (e *node) PressedOutside() bool {
 		return false
 	}
 	rt := e.c.rt
-	if rt.pressedWithin(rt.downs[len(rt.downs)-1], e) {
+	down := rt.downs[len(rt.downs)-1]
+	if rt.pressedWithin(down, e) || rt.pressedAbove(down, e) {
 		return false
 	}
 	rt.consumed = true
 	return true
+}
+
+// pressedAbove reports whether element id of the last frame is in an
+// overlay of a higher layer than the overlay e is in, e being in one above
+// LayerDefault: a press in a dialog is not one outside the drawer below it,
+// which stays open under it. Popovers, menus and tips of the content, in
+// LayerDefault, close at any press outside them.
+func (rt *engine) pressedAbove(id uint64, e *node) bool {
+	own := uint8(0)
+	for p := e; p != nil && own == 0; p = p.parent {
+		own = p.layer
+	}
+	s := rt.states[id]
+	return own > uint8(LayerDefault)+1 && s != nil && s.layer > own
 }
 
 // pressedWithin reports whether element id of the last frame is e, inside it,

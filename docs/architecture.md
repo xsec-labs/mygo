@@ -2884,11 +2884,35 @@ either.
   anchor in the focus order. Tab cycles the dialog on top, the focus moves
   into it while it is outside, the window's shortcuts built outside it do
   not fire, and the accessibility tree is the dialog's layer and what is
-  above it. Overlays register Escape as overlay shortcuts
+  above it. Overlays are in layers (`Layer`, `OverlayAt`): the window's
+  popovers, menus and tips in `LayerDefault`, a drawer in `LayerDrawer`,
+  dialogs (`DialogBase`, `AlertDialog`) in `LayerDialog`, toasts in
+  `LayerToast`. What is in a higher layer shows above what is in a lower
+  one however late either was built; within a layer, the one built last is
+  on top. Each element built straight into the overlay layer notes its
+  layer plus one (`node.layer`, copied to `state.layer` as the frame is
+  committed), and the frame's overlays are put in that order once the view
+  has built them, and again once lists have built the rows they build as
+  they lay out (`sortLayers`), so the order of painting, of hits, of the
+  accessibility tree and of the dialog on top (`engine.modal`) is one.
+  `Overlay` inside another overlay, or in a row of a list inside one, is in
+  the layer of that one (`inheritedLayer`): a menu opened in a dialog shows
+  above a drawer built later; one opened by the content is below it, and
+  inert behind a dialog. An overlay above `LayerDefault` does not take a
+  press in a higher layer for one outside it (`PressedOutside`,
+  `pressedAbove`): a drawer stays open as its dialog is answered; the
+  popovers of the content close at any press outside them. Elements built
+  straight into the overlay layer are identified by their place among those
+  of their layer, so a dialog is the same element whether or not a drawer
+  is built before it. A focus left in an overlay that just closed is not
+  taken into the modal beneath (`arrangeFocus`) before it is given back
+  (`restoreFocus`). Overlays register Escape as overlay shortcuts
   (`OverlayShortcut`), which the keys the focus and the elements around it
-  leave reach, the last registered (the overlay on top) first. Each element
+  leave reach, the one that paints last (the overlay on top, `overlayRank`)
+  first. Each element
   built at the top of `Overlay` notes the focus as it opens (`openers`),
-  which pruning gives back once it is gone with the focus that was in it.
+  which pruning gives back once it is gone with the focus that was in it,
+  across layers.
   An element attached to another (`AttachTo`, which `PopoverBase` and the
   popups of selects and comboboxes use) is that element's popover
   (`Element.popover`, and `state.anchor` once committed): its layout

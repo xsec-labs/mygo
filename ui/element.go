@@ -485,6 +485,9 @@ type node struct {
 	// engine.laySeq.
 	lay  uint8
 	laid uint64
+	// layer is, for an element built straight into the overlay layer, the
+	// Layer of the overlay it is part of, plus one (0 for any other).
+	layer uint8
 	// leaving marks a copy of an element gone, which its exit transition
 	// animates (1 if it was in its parent's flow, 2 if absolute), and
 	// ghosts an element holding such copies. attach is where Attach puts
@@ -492,8 +495,8 @@ type node struct {
 	leaving uint8
 	ghosts  bool
 	attach  attachment
-	// serial is the order the pass made the element in: of overlays, the
-	// one made last shows on top.
+	// serial is the order the pass made the element in: of the overlays
+	// of a layer, the one made last shows on top.
 	serial int32
 }
 
