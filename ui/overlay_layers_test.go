@@ -358,3 +358,28 @@ func TestPopoverInALazyRowOfADialogShowsAboveALaterDrawer(t *testing.T) {
 		t.Errorf("the item of the menu opened in a row of the dialog's list was not reached: %q", picked)
 	}
 }
+
+// A dialog whose button takes the focus as it is made (AutoFocus) gives
+// the focus back to what had it before, not to that button, which is gone
+// with the dialog.
+func TestFocusGoesBackFromADialogWithAnAutoFocusedButton(t *testing.T) {
+	open := false
+	tt := coreNewTester(func(c *context) {
+		if coreButton(c, "Open").Clicked() {
+			open = true
+		}
+		coreModal(c, &open, func() {
+			if coreButton(c, "Close").AutoFocus().Clicked() {
+				open = false
+			}
+		})
+	}, 400, 300)
+	tt.Click("Open")
+	if !tt.Focused("Close") {
+		t.Fatal("the dialog's AutoFocus button did not take the focus")
+	}
+	tt.Key(0, KeyEscape)
+	if open || !tt.Focused("Open") {
+		t.Errorf("closed (open %v): the focus is not back on Open", open)
+	}
+}

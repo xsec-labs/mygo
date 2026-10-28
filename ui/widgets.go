@@ -605,6 +605,9 @@ func coreOverlay(c *context, fn func()) {
 func coreOverlayAt(c *context, layer Layer, fn func()) {
 	layer = min(layer, layerCount-1)
 	saved, savedLayer := c.parent, c.layer
+	// The focus it is given back to is the one before what fn builds takes
+	// it, as a button with AutoFocus does as it is made.
+	had := c.rt.focused
 	o := c.overlayRoot()
 	c.parent, c.layer = o, layer
 	last := o.last
@@ -622,7 +625,7 @@ func coreOverlayAt(c *context, layer Layer, fn func()) {
 		return
 	}
 	for e := first; e != nil; e = e.next {
-		c.rt.openOverlay(e)
+		c.rt.openOverlay(e, had)
 	}
 }
 
