@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/i18n"
@@ -91,6 +93,9 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	}
 	conn.Capture = h.capture
 	conn.Detach = h.detach
+	if conn.Window != nil {
+		automate(conn.Window, h)
+	}
 	rt.insp.enabled = conn.DevTools
 	conn.ToggleDevTools = func() {
 		if rt.insp.enabled {
@@ -143,6 +148,14 @@ type windowHost struct {
 	// afterT and repaintT are the timers of After and Painter.After.
 	afterT, repaintT *time.Timer
 	detached         bool
+	// frames counts the frames built, watches are the Automation waits for
+	// a frame, and pending tells that a frame was asked for since the last
+	// automated input; closed is closed with the window.
+	frames    uint64
+	watches   []*automationWatch
+	pending   atomic.Bool
+	closeOnce sync.Once
+	closed    chan struct{}
 	// shown tells that a frame was presented, which makes the window
 	// ready to show.
 	shown bool
@@ -550,6 +563,13 @@ func (h *windowHost) capture() (int, int, []byte) {
 
 func (h *windowHost) detach() {
 	h.detached = true
+	if h.conn.Window != nil {
+		unautomate(h.conn.Window)
+	}
+	if closed := h.closedCh(); !h.isClosed(closed) {
+		close(h.closed)
+	}
+	h.watches = nil
 	if h.idleTimer != nil {
 		h.idleTimer.Stop()
 	}
@@ -561,7 +581,12 @@ func (h *windowHost) detach() {
 	}
 }
 
-func (h *windowHost) requestFrame() { h.conn.Surface.RequestFrame() }
+func (h *windowHost) requestFrame() {
+	h.pending.Store(true)
+	h.conn.Surface.RequestFrame()
+}
+
+func (h *windowHost) framed() { h.notify() }
 
 func (h *windowHost) afterTimer(at time.Time) {
 	switch {
@@ -740,7 +765,10 @@ func (h *windowHost) vibrancy() bool {
 	return ok && s.ShowsMaterial()
 }
 
-func (h *windowHost) invalidate() { h.conn.Invalidate() }
+func (h *windowHost) invalidate() {
+	h.pending.Store(true)
+	h.conn.Invalidate()
+}
 
 func (h *windowHost) openURL(u string, done func(error)) {
 	if h.conn.OpenURL != nil {

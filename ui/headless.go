@@ -102,6 +102,7 @@ func (h *headless) repaintTimer(at time.Time)                  { h.repaintAt = a
 func (h *headless) setCursor(c Cursor)                         { h.cursor = c }
 func (h *headless) setTextInput(t platform.TextInputState)     { h.ime = t }
 func (h *headless) updateAccessibility(t *platform.AccessTree) { h.keepAccess(t) }
+func (h *headless) framed()                                    {}
 func (h *headless) writeClipboard(s string)                    { h.clipboard, h.clipboardData = s, transfer.Data{} }
 func (h *headless) startDrag()                                 {}
 func (h *headless) setDropFormats([]transfer.Format)           {}

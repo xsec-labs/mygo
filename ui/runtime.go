@@ -32,6 +32,8 @@ type host interface {
 	setCursor(Cursor)
 	setTextInput(t platform.TextInputState)
 	updateAccessibility(tree *platform.AccessTree)
+	// framed tells that a frame was built, laid out and presented.
+	framed()
 	readClipboard() string
 	writeClipboard(string)
 	// readClipboardData reads the representations of formats on the
@@ -619,6 +621,7 @@ func (rt *engine) runFrame() {
 	if rt.access {
 		rt.host.updateAccessibility(rt.accessTree())
 	}
+	rt.host.framed()
 	if h, ok := rt.host.(*headless); ok {
 		// For tests, whether assistive technology reads the window or not.
 		h.announced = append(h.announced, rt.announcements...)
