@@ -4,6 +4,7 @@ package text
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Punctuation and full-width forms in a language that writes Han get the
@@ -205,7 +207,9 @@ func TestPangoGrayGlyphsAreMasks(t *testing.T) {
 		if err := os.WriteFile(cfg, []byte(conf), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(os.Args[0], "-test.run=^TestPangoGrayGlyphsAreMasks$", "-test.v")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPangoGrayGlyphsAreMasks$", "-test.v")
 		cmd.Env = append(os.Environ(), "XSEC_TEST_LCD_FONTCONFIG=1", "FONTCONFIG_FILE="+cfg)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("child test: %v\n%s", err, out)
