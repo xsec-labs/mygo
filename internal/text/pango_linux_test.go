@@ -211,8 +211,16 @@ func TestPangoGrayGlyphsAreMasks(t *testing.T) {
 		defer cancel()
 		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPangoGrayGlyphsAreMasks$", "-test.v")
 		cmd.Env = append(os.Environ(), "XSEC_TEST_LCD_FONTCONFIG=1", "FONTCONFIG_FILE="+cfg)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
 			t.Fatalf("child test: %v\n%s", err, out)
+		}
+		// A child that skipped passes too: report that as a skip, not a pass.
+		if bytes.Contains(out, []byte("--- SKIP: TestPangoGrayGlyphsAreMasks")) {
+			t.Skipf("child test skipped: %s", out)
+		}
+		if !bytes.Contains(out, []byte("--- PASS: TestPangoGrayGlyphsAreMasks")) {
+			t.Fatalf("child test did not run:\n%s", out)
 		}
 		return
 	}
