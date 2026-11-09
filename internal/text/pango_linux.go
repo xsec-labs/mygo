@@ -178,6 +178,7 @@ var pangoLib struct {
 	cairoFontOptionsCreate    func() uintptr
 	cairoFontOptionsDestroy   func(options uintptr)
 	cairoFontOptionsAntialias func(options uintptr, antialias int32)
+	cairoFontOptionsGetAA     func(options uintptr) int32
 	cairoFontOptionsHintMets  func(options uintptr, hint int32)
 	cairoFontOptionsHintStyle func(options uintptr, style int32)
 	cairoFontOptionsSubpixel  func(options uintptr, order int32)
@@ -333,6 +334,8 @@ func loadPango() error {
 	}
 	// Optional: Pango 1.44 and later, and what adding fonts needs.
 	missing = nil
+	// Only default antialiasing needs it: a missing symbol must not fail loading.
+	bind(cairo, &l.cairoFontOptionsGetAA, "cairo_font_options_get_antialias")
 	bind(pango, &l.contextSetRoundPositions, "pango_context_set_round_glyph_positions")
 	bind(pango, &l.attrFontFeaturesNew, "pango_attr_font_features_new")
 	bind(pango, &l.metricsGetHeight, "pango_font_metrics_get_height")
@@ -919,7 +922,7 @@ func (e *pangoEngine) space(font uintptr, r rune) (uint32, int32) {
 // per DIP, its user space in pixels.
 // scaledFont returns the cairo font of f at scale pixels per DIP, with the
 // context's options, but grayscale antialiasing instead of subpixel unless
-// subpixel.
+// subpixel, and unless the desktop's antialiasing is off.
 func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr {
 	key := scaledKey{f, scale, subpixel}
 	if sf, ok := e.scaled[key]; ok {
@@ -943,8 +946,19 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 	identity := cairoMatrix{xx: 1, yy: 1}
 	opts := l.cairoFontOptionsCreate()
 	l.cairoScaledFontOptions(src, opts)
-	if !subpixel && e.antialias == cairoAntialiasSubpixel {
-		l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
+	// Grayscale glyphs are white coverage masks. With the default antialiasing
+	// fontconfig may ask for subpixel (LCD) output, whose channels differ, and
+	// draw() would then take the glyph for a color bitmap and paint it in
+	// its own colors instead of the text's. Default antialiasing that
+	// fontconfig turns off stays off.
+	if !subpixel {
+		aa := e.antialias
+		if aa == cairoAntialiasDefault && l.cairoFontOptionsGetAA != nil {
+			aa = l.cairoFontOptionsGetAA(opts)
+		}
+		if aa != cairoAntialiasNone {
+			l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
+		}
 	}
 	sf := l.cairoScaledFontCreate(l.cairoScaledFontFace(src), &m, &identity, opts)
 	l.cairoFontOptionsDestroy(opts)
