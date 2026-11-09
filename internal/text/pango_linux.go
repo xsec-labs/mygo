@@ -178,6 +178,7 @@ var pangoLib struct {
 	cairoFontOptionsCreate    func() uintptr
 	cairoFontOptionsDestroy   func(options uintptr)
 	cairoFontOptionsAntialias func(options uintptr, antialias int32)
+	cairoFontOptionsGetAA     func(options uintptr) int32
 	cairoFontOptionsHintMets  func(options uintptr, hint int32)
 	cairoFontOptionsHintStyle func(options uintptr, style int32)
 	cairoFontOptionsSubpixel  func(options uintptr, order int32)
@@ -314,6 +315,7 @@ func loadPango() error {
 	bind(cairo, &l.cairoScaledFontFace, "cairo_scaled_font_get_font_face")
 	bind(cairo, &l.cairoScaledFontMatrix, "cairo_scaled_font_get_font_matrix")
 	bind(cairo, &l.cairoScaledFontOptions, "cairo_scaled_font_get_font_options")
+	bind(cairo, &l.cairoFontOptionsGetAA, "cairo_font_options_get_antialias")
 	bind(cairo, &l.cairoScaledFontCreate, "cairo_scaled_font_create")
 	bind(cairo, &l.cairoScaledFontStatus, "cairo_scaled_font_status")
 	bind(cairo, &l.cairoScaledFontDestroy, "cairo_scaled_font_destroy")
@@ -946,9 +948,16 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 	// Grayscale glyphs are white coverage masks. With the default antialiasing
 	// fontconfig may ask for subpixel (LCD) output, whose channels differ, and
 	// draw() would then take the glyph for a color bitmap and paint it in
-	// its own colors instead of the text's.
-	if !subpixel && e.antialias != cairoAntialiasNone {
-		l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
+	// its own colors instead of the text's. Default antialiasing that
+	// fontconfig turns off stays off.
+	if !subpixel {
+		aa := e.antialias
+		if aa == cairoAntialiasDefault {
+			aa = l.cairoFontOptionsGetAA(opts)
+		}
+		if aa != cairoAntialiasNone {
+			l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
+		}
 	}
 	sf := l.cairoScaledFontCreate(l.cairoScaledFontFace(src), &m, &identity, opts)
 	l.cairoFontOptionsDestroy(opts)

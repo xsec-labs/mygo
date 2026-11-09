@@ -190,38 +190,8 @@ func TestWriteCacheFileConcurrent(t *testing.T) {
 // turn them into LCD-filtered glyphs, which draw as color bitmaps and come
 // out tinted instead of in the text's color.
 func TestPangoGrayGlyphsAreMasks(t *testing.T) {
-	if os.Getenv("XSEC_TEST_LCD_FONTCONFIG") == "" {
-		// fontconfig reads its configuration once per process, so the
-		// screen's settings are given to a child test process.
-		cfg := filepath.Join(t.TempDir(), "fonts.conf")
-		const conf = `<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
-  <match target="font">
-    <edit name="rgba" mode="assign"><const>rgb</const></edit>
-    <edit name="antialias" mode="assign"><bool>true</bool></edit>
-  </match>
-</fontconfig>
-`
-		if err := os.WriteFile(cfg, []byte(conf), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPangoGrayGlyphsAreMasks$", "-test.v")
-		cmd.Env = append(os.Environ(), "XSEC_TEST_LCD_FONTCONFIG=1", "FONTCONFIG_FILE="+cfg)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("child test: %v\n%s", err, out)
-		}
-		// A child that skipped passes too: report that as a skip, not a pass.
-		if bytes.Contains(out, []byte("--- SKIP: TestPangoGrayGlyphsAreMasks")) {
-			t.Skipf("child test skipped: %s", out)
-		}
-		if !bytes.Contains(out, []byte("--- PASS: TestPangoGrayGlyphsAreMasks")) {
-			t.Fatalf("child test did not run:\n%s", out)
-		}
+	if os.Getenv(pangoChildEnv) == "" {
+		runPangoChild(t, "TestPangoGrayGlyphsAreMasks", "rgb")
 		return
 	}
 	e, err := newPango()
@@ -251,5 +221,86 @@ func TestPangoGrayGlyphsAreMasks(t *testing.T) {
 		if drawn < 20 {
 			t.Fatalf("%s: only %d glyphs drawn, want at least 20", family, drawn)
 		}
+	}
+}
+
+// Fontconfig turns antialiasing off for a screen (antialias=false). With
+// the desktop's antialiasing unset, the text must stay unsmoothed: no
+// glyph may have partial coverage, which grayscale antialiasing would give.
+func TestPangoDisabledAntialiasStays(t *testing.T) {
+	if os.Getenv(pangoChildEnv) == "" {
+		runPangoChild(t, "TestPangoDisabledAntialiasStays", "off")
+		return
+	}
+	e, err := newPango()
+	if err != nil {
+		t.Skip(err)
+	}
+	e.setFontRendering("", "", "")
+	f := e.font(Style{Family: "sans-serif", Size: 14})
+	if f == nil {
+		t.Skip("no sans-serif font")
+	}
+	drawn := 0
+	for id := uint32(1); id < 400; id++ {
+		b := e.draw(f, id, 1, 0, false)
+		if b.color {
+			t.Fatalf("glyph %d is drawn as a color bitmap", id)
+		}
+		if b.pix == nil {
+			continue
+		}
+		drawn++
+		for i := 3; i < len(b.pix); i += 1 {
+			if b.pix[i] != 0 && b.pix[i] != 255 {
+				t.Fatalf("glyph %d has partial coverage %d with antialiasing off", id, b.pix[i])
+			}
+		}
+	}
+	if drawn < 20 {
+		t.Fatalf("only %d glyphs drawn, want at least 20", drawn)
+	}
+}
+
+const pangoChildEnv = "XSEC_TEST_PANGO_CHILD"
+
+// runPangoChild runs test name in a child process whose fontconfig sets the
+// screen's subpixel order or antialiasing to mode: "rgb" for LCD antialiasing,
+// "off" for none. fontconfig reads its configuration once per process, so the
+// screen's settings are given to a child.
+func runPangoChild(t *testing.T, name, mode string) {
+	t.Helper()
+	edit := `<edit name="rgba" mode="assign"><const>rgb</const></edit>
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>`
+	if mode == "off" {
+		edit = `<edit name="antialias" mode="assign"><bool>false</bool></edit>`
+	}
+	cfg := filepath.Join(t.TempDir(), "fonts.conf")
+	conf := `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <match target="font">
+    ` + edit + `
+  </match>
+</fontconfig>
+`
+	if err := os.WriteFile(cfg, []byte(conf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+name+"$", "-test.v")
+	cmd.Env = append(os.Environ(), pangoChildEnv+"=1", "FONTCONFIG_FILE="+cfg)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("child test: %v\n%s", err, out)
+	}
+	// A child that skipped passes too: report that as a skip, not a pass.
+	if bytes.Contains(out, []byte("--- SKIP: "+name)) {
+		t.Skipf("child test skipped: %s", out)
+	}
+	if !bytes.Contains(out, []byte("--- PASS: "+name)) {
+		t.Fatalf("child test did not run:\n%s", out)
 	}
 }
