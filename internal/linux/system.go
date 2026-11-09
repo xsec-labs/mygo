@@ -266,21 +266,28 @@ type theme struct{ b *Backend }
 
 // FontRendering returns GTK's gtk-xft settings, which the desktop's
 // settings daemon gives (XSETTINGS) or GDK's defaults, as GTK makes them
-// the screen's font options: no hinting where hinting is off, and subpixel
-// antialiasing where the screen's subpixels have an order.
+// the screen's font options: no hinting where hinting is off. Antialiasing
+// is grayscale wherever it is on: the screen's subpixel (LCD) order is not
+// used, so text is never drawn with colored fringes.
 func (theme) FontRendering() platform.FontRendering {
 	settings := gtkSettingsGetDefault()
 	if settings == 0 {
 		return platform.FontRendering{}
 	}
 	var antialias, hinting int32
-	var style, rgba ptr
+	var style ptr
 	gObjectGetPtr(settings, cs("gtk-xft-antialias"), unsafe.Pointer(&antialias), 0)
 	gObjectGetPtr(settings, cs("gtk-xft-hinting"), unsafe.Pointer(&hinting), 0)
 	gObjectGetPtr(settings, cs("gtk-xft-hintstyle"), unsafe.Pointer(&style), 0)
-	gObjectGetPtr(settings, cs("gtk-xft-rgba"), unsafe.Pointer(&rgba), 0)
+	return fontRenderingFrom(antialias, hinting, takeStr(style))
+}
+
+// fontRenderingFrom maps GTK's gtk-xft-antialias, gtk-xft-hinting and
+// gtk-xft-hintstyle to the screen's font options. Subpixels are never
+// set, so antialiasing on is grayscale.
+func fontRenderingFrom(antialias, hinting int32, hintStyle string) platform.FontRendering {
 	var r platform.FontRendering
-	switch hintStyle := takeStr(style); {
+	switch {
 	case hinting == 0:
 		r.Hinting = "none"
 	case hinting == 1 && strings.HasPrefix(hintStyle, "hint"):
@@ -289,16 +296,10 @@ func (theme) FontRendering() platform.FontRendering {
 			r.Hinting = h
 		}
 	}
-	switch order := takeStr(rgba); order {
-	case "rgb", "bgr", "vrgb", "vbgr":
-		r.Subpixels = order
-	}
-	switch {
-	case antialias == 0:
+	switch antialias {
+	case 0:
 		r.Antialias = "none"
-	case antialias == 1 && r.Subpixels != "":
-		r.Antialias = "subpixel"
-	case antialias == 1:
+	case 1:
 		r.Antialias = "gray"
 	}
 	return r
