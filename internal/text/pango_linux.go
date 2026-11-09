@@ -315,7 +315,6 @@ func loadPango() error {
 	bind(cairo, &l.cairoScaledFontFace, "cairo_scaled_font_get_font_face")
 	bind(cairo, &l.cairoScaledFontMatrix, "cairo_scaled_font_get_font_matrix")
 	bind(cairo, &l.cairoScaledFontOptions, "cairo_scaled_font_get_font_options")
-	bind(cairo, &l.cairoFontOptionsGetAA, "cairo_font_options_get_antialias")
 	bind(cairo, &l.cairoScaledFontCreate, "cairo_scaled_font_create")
 	bind(cairo, &l.cairoScaledFontStatus, "cairo_scaled_font_status")
 	bind(cairo, &l.cairoScaledFontDestroy, "cairo_scaled_font_destroy")
@@ -335,6 +334,8 @@ func loadPango() error {
 	}
 	// Optional: Pango 1.44 and later, and what adding fonts needs.
 	missing = nil
+	// Only default antialiasing needs it: a missing symbol must not fail loading.
+	bind(cairo, &l.cairoFontOptionsGetAA, "cairo_font_options_get_antialias")
 	bind(pango, &l.contextSetRoundPositions, "pango_context_set_round_glyph_positions")
 	bind(pango, &l.attrFontFeaturesNew, "pango_attr_font_features_new")
 	bind(pango, &l.metricsGetHeight, "pango_font_metrics_get_height")
@@ -952,7 +953,7 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 	// fontconfig turns off stays off.
 	if !subpixel {
 		aa := e.antialias
-		if aa == cairoAntialiasDefault {
+		if aa == cairoAntialiasDefault && l.cairoFontOptionsGetAA != nil {
 			aa = l.cairoFontOptionsGetAA(opts)
 		}
 		if aa != cairoAntialiasNone {
