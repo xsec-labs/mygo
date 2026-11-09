@@ -185,10 +185,10 @@ func TestWriteCacheFileConcurrent(t *testing.T) {
 
 // A screen whose fontconfig asks for subpixel antialiasing (rgba=rgb)
 // while the desktop gives no antialiasing setting (gtk-xft-antialias
-// unset) draws grayscale glyphs with the font's default. Those are white
-// coverage masks, and the text is painted in its own color. The default
-// must not turn them into LCD-filtered glyphs, which then look like color
-// bitmaps: text comes out white-green instead of its color.
+// unset) gets the font's default antialiasing. Grayscale glyphs must stay
+// white coverage masks, painted in the text's color. The default must not
+// turn them into LCD-filtered glyphs, which draw as color bitmaps and come
+// out tinted instead of in the text's color.
 func TestPangoGrayGlyphsAreMasks(t *testing.T) {
 	if os.Getenv("XSEC_TEST_LCD_FONTCONFIG") == "" {
 		// fontconfig reads its configuration once per process, so the
@@ -236,11 +236,20 @@ func TestPangoGrayGlyphsAreMasks(t *testing.T) {
 			t.Skipf("no %s font", family)
 		}
 		// Glyph ids of a typical font cover the Latin letters and digits
-		// well before 400.
+		// well before 400. A glyph that draws nothing is not checked, so
+		// count the drawn ones: a test that draws nothing must fail.
+		drawn := 0
 		for id := uint32(1); id < 400; id++ {
-			if b := e.draw(f, id, 1, 0, false); b.color {
+			b := e.draw(f, id, 1, 0, false)
+			if b.color {
 				t.Fatalf("%s glyph %d is drawn as a color bitmap with grayscale text", family, id)
 			}
+			if b.pix != nil {
+				drawn++
+			}
+		}
+		if drawn < 20 {
+			t.Fatalf("%s: only %d glyphs drawn, want at least 20", family, drawn)
 		}
 	}
 }
