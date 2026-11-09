@@ -919,7 +919,7 @@ func (e *pangoEngine) space(font uintptr, r rune) (uint32, int32) {
 // per DIP, its user space in pixels.
 // scaledFont returns the cairo font of f at scale pixels per DIP, with the
 // context's options, but grayscale antialiasing instead of subpixel unless
-// subpixel.
+// subpixel, and unless the desktop's antialiasing is off.
 func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr {
 	key := scaledKey{f, scale, subpixel}
 	if sf, ok := e.scaled[key]; ok {
@@ -943,7 +943,11 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 	identity := cairoMatrix{xx: 1, yy: 1}
 	opts := l.cairoFontOptionsCreate()
 	l.cairoScaledFontOptions(src, opts)
-	if !subpixel && e.antialias == cairoAntialiasSubpixel {
+	// Grayscale glyphs are white coverage masks. With the default antialiasing
+	// fontconfig may ask for subpixel (LCD) output, whose channels differ, and
+	// draw() would then take the glyph for a color bitmap and paint it in
+	// its own colors instead of the text's.
+	if !subpixel && e.antialias != cairoAntialiasNone {
 		l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
 	}
 	sf := l.cairoScaledFontCreate(l.cairoScaledFontFace(src), &m, &identity, opts)

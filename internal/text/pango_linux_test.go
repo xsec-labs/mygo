@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -176,6 +177,58 @@ func TestWriteCacheFileConcurrent(t *testing.T) {
 		}
 		if mode := info.Mode().Perm(); mode != 0o644 {
 			t.Fatalf("round %d: font's mode %v, want 0644", round, mode)
+		}
+	}
+}
+
+// A screen whose fontconfig asks for subpixel antialiasing (rgba=rgb)
+// while the desktop gives no antialiasing setting (gtk-xft-antialias
+// unset) draws grayscale glyphs with the font's default. Those are white
+// coverage masks, and the text is painted in its own color. The default
+// must not turn them into LCD-filtered glyphs, which then look like color
+// bitmaps: text comes out white-green instead of its color.
+func TestPangoGrayGlyphsAreMasks(t *testing.T) {
+	if os.Getenv("XSEC_TEST_LCD_FONTCONFIG") == "" {
+		// fontconfig reads its configuration once per process, so the
+		// screen's settings are given to a child test process.
+		cfg := filepath.Join(t.TempDir(), "fonts.conf")
+		const conf = `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <match target="font">
+    <edit name="rgba" mode="assign"><const>rgb</const></edit>
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+  </match>
+</fontconfig>
+`
+		if err := os.WriteFile(cfg, []byte(conf), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestPangoGrayGlyphsAreMasks$", "-test.v")
+		cmd.Env = append(os.Environ(), "XSEC_TEST_LCD_FONTCONFIG=1", "FONTCONFIG_FILE="+cfg)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("child test: %v\n%s", err, out)
+		}
+		return
+	}
+	e, err := newPango()
+	if err != nil {
+		t.Skip(err)
+	}
+	// The desktop's settings say nothing about antialiasing.
+	e.setFontRendering("", "", "")
+	for _, family := range []string{"sans-serif", "serif", "monospace"} {
+		f := e.font(Style{Family: family, Size: 14})
+		if f == nil {
+			t.Skipf("no %s font", family)
+		}
+		// Glyph ids of a typical font cover the Latin letters and digits
+		// well before 400.
+		for id := uint32(1); id < 400; id++ {
+			if b := e.draw(f, id, 1, 0, false); b.color {
+				t.Fatalf("%s glyph %d is drawn as a color bitmap with grayscale text", family, id)
+			}
 		}
 	}
 }
