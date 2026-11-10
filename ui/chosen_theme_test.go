@@ -49,3 +49,25 @@ func TestChosenRowsUseChosenColors(t *testing.T) {
 		}
 	}
 }
+
+// chosen falls back to the accent when Chosen is unset, and when it is set
+// takes ChosenText and the cursor border from the theme, each falling back
+// to Text when the theme leaves it transparent.
+func TestChosenFallbacks(t *testing.T) {
+	th := LightTheme()
+	fill, text, cursor := th.chosen()
+	if fill != th.Accent || text != th.AccentText || cursor != th.AccentText {
+		t.Fatalf("unset: fill %v text %v cursor %v; want the accent %v, %v, %v", fill, text, cursor, th.Accent, th.AccentText, th.AccentText)
+	}
+	tint, focus := RGBA(37, 99, 235, 0.12), RGBA(255, 0, 0, 1)
+	th.Chosen, th.ChosenText, th.Focus = tint, Transparent, focus
+	fill, text, cursor = th.chosen()
+	if fill != tint || text != th.Text || cursor != focus {
+		t.Fatalf("set, text and cursor unset: fill %v text %v cursor %v; want %v, %v, %v", fill, text, cursor, tint, th.Text, focus)
+	}
+	th.ChosenText, th.Focus = Hex("#18181b"), Transparent
+	fill, text, cursor = th.chosen()
+	if text != th.ChosenText || cursor != th.Text {
+		t.Fatalf("set, focus unset: text %v cursor %v; want %v and %v", text, cursor, th.ChosenText, th.Text)
+	}
+}
