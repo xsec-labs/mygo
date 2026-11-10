@@ -239,9 +239,11 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 				switch {
 				case !on && !at, box.FocusWithin():
 				case on && at:
-					box.Background(t.Accent).TextColor(t.AccentText).DrawOver(cursorBorder(table, t.AccentText))
+					fill, text, cursor := t.chosen()
+					box.Background(fill).TextColor(text).DrawOver(cursorBorder(table, cursor))
 				case on:
-					box.Background(t.Accent).TextColor(t.AccentText)
+					fill, text, _ := t.chosen()
+					box.Background(fill).TextColor(text)
 				case at:
 					box.DrawOver(cursorBorder(table, t.Accent))
 				}
@@ -626,15 +628,16 @@ func abs(v float32) float32 {
 	return v
 }
 
-// Selected shows the element as chosen among its siblings, in the accent
-// color, as a row of a list, and tells assistive technology it is.
+// Selected shows the element as chosen among its siblings, in the chosen
+// colors of the theme (the accent by default), as a row of a list, and tells
+// assistive technology it is.
 func (e *node) Selected(on bool) *node {
 	if !on {
 		e.checked = 1
 		return e
 	}
-	t := e.c.theme
+	fill, text, _ := e.c.theme.chosen()
 	e.checked = 2
-	e.Background(t.Accent).TextColor(t.AccentText)
+	e.Background(fill).TextColor(text)
 	return e
 }

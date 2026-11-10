@@ -32,6 +32,12 @@ type Theme struct {
 	Success Color
 	// Selection highlights selected text.
 	Selection Color
+	// Chosen fills the rows and cells chosen in a list or table, and
+	// ChosenText is text on them. Left transparent, they are Accent with
+	// AccentText on it; a theme that wants a subtle tint sets Chosen to it
+	// and ChosenText to the text color, so the muted text and badges in the
+	// cells stay readable on it.
+	Chosen, ChosenText Color
 	// Focus is the ring around the control with the keyboard focus.
 	Focus Color
 	// Inverse fills tooltips and toasts, the theme turned over so that
@@ -77,6 +83,22 @@ func (t *Theme) inverse() (fill, text Color) {
 		text = t.Background
 	}
 	return fill, text
+}
+
+// chosen returns the fill of a chosen row or cell, the text color on it, and
+// the color of the cursor's border on one that is also the cursor's.
+func (t *Theme) chosen() (fill, text, cursor Color) {
+	if t.Chosen == Transparent {
+		return t.Accent, t.AccentText, t.AccentText
+	}
+	text, cursor = t.ChosenText, t.Focus
+	if text == Transparent {
+		text = t.Text
+	}
+	if cursor == Transparent {
+		cursor = t.Text
+	}
+	return t.Chosen, text, cursor
 }
 
 func (t *Theme) scrollbarWidth() float32 {
