@@ -148,11 +148,11 @@ func TestWindowsInstallerEncoding(t *testing.T) {
 	}
 }
 
-// uninstall runs the uninstaller of the app installed in dir silently, and
-// waits until it is done.
-func uninstall(t *testing.T, dir string) {
+// uninstall runs the uninstaller of the app installed in dir silently, with
+// the extra arguments, and waits until it is done.
+func uninstall(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	if out, err := exec.Command(filepath.Join(dir, "Uninstall.exe"), "/S").CombinedOutput(); err != nil {
+	if out, err := exec.Command(filepath.Join(dir, "Uninstall.exe"), append([]string{"/S"}, args...)...).CombinedOutput(); err != nil {
 		t.Fatalf("uninstalling: %v\n%s", err, out)
 	}
 	// The uninstaller copies itself away and runs from there, and removes

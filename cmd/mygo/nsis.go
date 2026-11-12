@@ -146,6 +146,19 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 	uninstallKey := `Software\Microsoft\Windows\CurrentVersion\Uninstall\` + c.Identifier
 	shortcut := nsisEscape(fsName(c.Name)) + ".lnk"
 	register, unregister := nsisAssociations(c, exe)
+	userData, err := userDataUninstall(c)
+	if err != nil {
+		return "", err
+	}
+	if userData.script != "" {
+		// The script goes into the app's folder, with a byte-order mark so
+		// that PowerShell reads its folder names as UTF-8.
+		path := filepath.Join(work, purgeScriptName)
+		if err := os.WriteFile(path, append([]byte("\xEF\xBB\xBF"), userData.script...), 0o644); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&files, "  File \"/oname=%s\" %s\n", purgeScriptName, nsisString(path))
+	}
 	langs, err := c.languages()
 	if err != nil {
 		return "", err
@@ -167,11 +180,11 @@ BrandingText " "
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Create a desktop shortcut"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 !include "MUI2.nsh"
-!insertmacro MUI_PAGE_DIRECTORY
+` + userData.head + `!insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
+` + userData.page + `!insertmacro MUI_UNPAGE_INSTFILES
 ` + languages + `
 Section
   SetOutPath "$INSTDIR"
@@ -220,11 +233,11 @@ Section "Uninstall"
   Push "$DESKTOP\` + shortcut + `"
   Call un.DeleteShortcut
   DeleteRegKey HKCU ` + nsisString(uninstallKey) + `
-` + unregister + `  ; Last, so that the app's folder is gone once the uninstall is done:
+` + unregister + userData.call + `  ; Last, so that the app's folder is gone once the uninstall is done:
   ; the uninstaller runs from a copy of itself that nothing waits for.
   RMDir /r "$INSTDIR"
 SectionEnd
-`
+` + userData.functions
 	nsi := filepath.Join(work, "installer.nsi")
 	if err := writeNSIS(nsi, script); err != nil {
 		return "", err
