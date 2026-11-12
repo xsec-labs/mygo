@@ -84,6 +84,14 @@ type userDataParts struct {
 // userDataUninstall returns the parts of the installer script for
 // windows.userData.
 func userDataUninstall(c *Config) (userDataParts, error) {
+	if note := c.Windows.UserDataNote; note != "" {
+		if len(c.Windows.UserData) == 0 {
+			return userDataParts{}, fmt.Errorf("windows.userDataNote needs windows.userData")
+		}
+		if strings.IndexFunc(note, unicode.IsControl) >= 0 {
+			return userDataParts{}, fmt.Errorf("windows.userDataNote is one line of text")
+		}
+	}
 	if len(c.Windows.UserData) == 0 {
 		return userDataParts{}, nil
 	}
@@ -98,7 +106,14 @@ func userDataUninstall(c *Config) (userDataParts, error) {
 		fmt.Fprintf(&shown, `$\r$\n    $%s\%s`, f.root, f.rel)
 		fmt.Fprintf(&purge, "Remove-Top $env:%s %s\n", f.root, psString(f.rel))
 	}
-	label := `"` + nsisEscape("Delete the data of "+c.Name+" on this computer as well? It is kept in these folders:") +
+	// The question, then the note on its own line if there is one, then the
+	// folders.
+	question := "Delete the data of " + c.Name + " on this computer as well?"
+	sep, noteLine := " ", ""
+	if note := c.Windows.UserDataNote; note != "" {
+		sep, noteLine = `$\r$\n`, nsisEscape(note)+`$\r$\n`
+	}
+	label := `"` + nsisEscape(question) + sep + noteLine + nsisEscape("It is kept in these folders:") +
 		shown.String() + `$\r$\n$\r$\n` + nsisEscape("Folders you work in are not deleted.") + `"`
 	// The page's text is one NSIS string, and its folders expand to about
 	// 60 characters each: a page too long for NSIS is refused, not cut.

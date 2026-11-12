@@ -38,6 +38,11 @@ type Windows struct {
 	// without asking. Links in them are removed, not followed, so the
 	// folders the app works in are kept.
 	UserData []string `json:"userData"`
+	// UserDataNote says on the uninstaller's page what the folders of
+	// UserData hold, as one line of plain text, e.g. "Your vault and your
+	// cloud sign-in are deleted." It shows between the question and the
+	// folders, and needs UserData.
+	UserDataNote string `json:"userDataNote"`
 }
 
 func (w *Windows) signs() bool { return w.Certificate != "" || w.SignCommand != "" }

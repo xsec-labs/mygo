@@ -238,6 +238,8 @@ export interface WindowsConfig {
   timestampUrl?: string;
   /** Folders of the user's data under `$APPDATA` or `$LOCALAPPDATA`, such as `"$APPDATA\\My App"`, which the uninstaller offers to delete: a checkbox, not checked by default; a silent uninstall keeps them unless it is given `/PURGE`. */
   userData?: string[];
+  /** One line on the uninstaller's page about what the folders of `userData` hold, e.g. "Your vault and your cloud sign-in are deleted." It needs `userData`. */
+  userDataNote?: string;
 }
 
 /** Linux packaging. */

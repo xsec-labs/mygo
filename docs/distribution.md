@@ -391,6 +391,8 @@ shared ones such as `$APPDATA\Microsoft`. The folders are cleared with
 PowerShell, which removes each link inside them as a link, so a junction to a
 folder the user works in is removed and that folder is left alone. A listed
 folder that is itself a link is removed as a link too, and its target is kept.
+`windows.userDataNote` puts one line of text on that page, such as what the
+folders hold, between the question and the list of folders.
 A link on the way to a listed folder, above it in the data, stops its purge:
 nothing under that link is deleted, and the uninstaller reports the failure
 unless it is silent.

@@ -131,6 +131,7 @@ See [macOS](distribution.md#macos).
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |
 | `userData` | | folders of the user's data under `$APPDATA` or `$LOCALAPPDATA`, such as `"$APPDATA\\My App"`, that the app alone uses and the uninstaller offers to delete: a checkbox, not checked by default; a silent uninstall (`/S`) keeps them unless it is given `/PURGE`. A link on the way to one of them stops its deletion |
+| `userDataNote` | | one line of plain text on the uninstaller's page, saying what the folders hold, e.g. "Your vault and your cloud login credentials will be deleted."; it needs `userData` |
 
 See [Windows](distribution.md#windows).
 
