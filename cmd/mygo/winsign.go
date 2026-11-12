@@ -31,6 +31,13 @@ type Windows struct {
 	// TimestampURL is the RFC 3161 time stamping server of Certificate
 	// (default http://timestamp.digicert.com).
 	TimestampURL string `json:"timestampUrl"`
+	// UserData lists the folders of the user's data, each under $APPDATA or
+	// $LOCALAPPDATA, e.g. "$APPDATA\\My App". The uninstaller offers to
+	// delete them in a checkbox that is not checked by default; a silent
+	// uninstall (/S) keeps them unless it is given /PURGE, which deletes them
+	// without asking. Links in them are removed, not followed, so the
+	// folders the app works in are kept.
+	UserData []string `json:"userData"`
 }
 
 func (w *Windows) signs() bool { return w.Certificate != "" || w.SignCommand != "" }

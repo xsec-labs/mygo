@@ -382,6 +382,14 @@ the app's URL schemes and file associations. Its last page offers to run
 the app and to create a desktop shortcut, which is checked; silent
 installs (`/S`) create none.
 
+The uninstaller keeps the app's data. With `windows.userData` it also
+offers to delete the folders of the data that the config lists: an
+interactive uninstall shows a checkbox for it, not checked by default, and a
+silent uninstall (`/S`) keeps the data unless it is given `/PURGE`, which
+deletes it without asking. The folders are cleared with PowerShell, which
+removes each link in them as a link: a junction to a folder the user works
+in is removed, and that folder is left alone.
+
 The installer is made with [NSIS](https://nsis.sourceforge.io). On
 Windows, `mygo build` uses NSIS when it is installed, and otherwise
 downloads it the first time it needs it: the official NSIS 3.13 zip, from
