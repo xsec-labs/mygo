@@ -150,6 +150,15 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 	if err != nil {
 		return "", err
 	}
+	if userData.script != "" {
+		// The script goes into the app's folder, with a byte-order mark so
+		// that PowerShell reads its folder names as UTF-8.
+		path := filepath.Join(work, purgeScriptName)
+		if err := os.WriteFile(path, append([]byte("\xEF\xBB\xBF"), userData.script...), 0o644); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&files, "  File \"/oname=%s\" %s\n", purgeScriptName, nsisString(path))
+	}
 	langs, err := c.languages()
 	if err != nil {
 		return "", err

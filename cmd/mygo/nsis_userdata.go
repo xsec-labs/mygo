@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"unicode"
-	"unicode/utf16"
 )
 
 // The uninstaller of a Windows installer deletes the data of the app only
@@ -18,6 +16,20 @@ import (
 // link a folder it works in (a junction into a project, for instance) into
 // its own data, and that link has to go without its target: PowerShell
 // removes each link as a link and never descends into it.
+//
+// The PowerShell script is a file the installer puts in the app's folder,
+// not part of the uninstaller's command line. NSIS cuts a string at
+// NSIS_MAX_STRLEN (1024 characters by default) when the uninstaller runs,
+// and the script encoded for -EncodedCommand is longer than that: it was
+// cut, PowerShell refused it, and the folders stayed.
+
+// nsisMaxString is NSIS_MAX_STRLEN by default: NSIS cuts a longer string.
+const nsisMaxString = 1024
+
+// purgeScriptName is the PowerShell script that deletes the data. The
+// installer puts it in the app's folder, and the uninstaller runs it before
+// it removes that folder.
+const purgeScriptName = "userdata-purge.ps1"
 
 // userDataFolder is an entry of windows.userData: rel, a folder under the
 // NSIS variable $root (APPDATA or LOCALAPPDATA), with \ separators.
@@ -64,6 +76,7 @@ type userDataParts struct {
 	page      string // between the confirm page and the progress page
 	call      string // in the uninstall section, before the app's folder goes
 	functions string // after the uninstall section
+	script    string // the PowerShell script the uninstaller runs, as purgeScriptName
 }
 
 // userDataUninstall returns the parts of the installer script for
@@ -72,7 +85,7 @@ func userDataUninstall(c *Config) (userDataParts, error) {
 	if len(c.Windows.UserData) == 0 {
 		return userDataParts{}, nil
 	}
-	var shown, script strings.Builder
+	var shown, purge strings.Builder
 	for _, entry := range c.Windows.UserData {
 		f, err := parseUserData(entry)
 		if err != nil {
@@ -81,11 +94,15 @@ func userDataUninstall(c *Config) (userDataParts, error) {
 		// NSIS expands $APPDATA and $LOCALAPPDATA in the page's text, so
 		// the page shows where the data is.
 		fmt.Fprintf(&shown, `$\r$\n    $%s\%s`, f.root, f.rel)
-		fmt.Fprintf(&script, "Remove-Top $env:%s %s\n", f.root, psString(f.rel))
+		fmt.Fprintf(&purge, "Remove-Top $env:%s %s\n", f.root, psString(f.rel))
 	}
-	encoded := encodePowerShell(purgeScriptHead + script.String() + "if ($script:failed -gt 0) { exit 1 }\n")
 	label := `"` + nsisEscape("Delete the data of "+c.Name+" on this computer as well? It is kept in these folders:") +
 		shown.String() + `$\r$\n$\r$\n` + nsisEscape("Folders you work in are not deleted.") + `"`
+	// The page's text is one NSIS string, and its folders expand to about
+	// 60 characters each: a page too long for NSIS is refused, not cut.
+	if len(label)+60*len(c.Windows.UserData) > nsisMaxString {
+		return userDataParts{}, fmt.Errorf("windows.userData: the folders are too long for the uninstaller's page")
+	}
 	return userDataParts{
 		head: `!include "FileFunc.nsh"
 !include "nsDialogs.nsh"
@@ -132,7 +149,7 @@ Function un.UserDataLeave
 FunctionEnd
 
 Function un.DeleteUserData
-  nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ` + encoded + `'
+  nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\` + purgeScriptName + `"'
   Pop $0
   ${If} $0 != "0"
     IfSilent +2 0
@@ -140,6 +157,7 @@ Function un.DeleteUserData
   ${EndIf}
 FunctionEnd
 `,
+		script: purgeScriptHead + purge.String() + "if ($script:failed -gt 0) { exit 1 }\n",
 	}, nil
 }
 
@@ -181,15 +199,4 @@ function Remove-Top([string]$root, [string]$rel) {
 // psString quotes s as a PowerShell string.
 func psString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-}
-
-// encodePowerShell encodes script for powershell -EncodedCommand: its
-// UTF-16LE bytes in base64.
-func encodePowerShell(script string) string {
-	units := utf16.Encode([]rune(script))
-	b := make([]byte, 0, 2*len(units))
-	for _, u := range units {
-		b = append(b, byte(u), byte(u>>8))
-	}
-	return base64.StdEncoding.EncodeToString(b)
 }

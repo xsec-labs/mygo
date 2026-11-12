@@ -1,15 +1,14 @@
 package main
 
 import (
-	"encoding/base64"
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
-	"unicode/utf16"
 )
 
 func TestParseUserData(t *testing.T) {
@@ -53,8 +52,8 @@ func TestUserDataConfigIsChecked(t *testing.T) {
 	}
 }
 
-// userDataScript returns the installer script of c's uninstaller parts, or
-// an empty string without windows.userData.
+// userDataScript returns the parts of the uninstaller of an app with the
+// given windows.userData.
 func userDataScript(t *testing.T, userData []string) userDataParts {
 	t.Helper()
 	c := &Config{Name: "Userdata App"}
@@ -98,9 +97,11 @@ func TestUserDataUninstallParts(t *testing.T) {
 	if !strings.Contains(parts.functions, `$APPDATA\xSec Desktop`) || !strings.Contains(parts.functions, `$LOCALAPPDATA\XSec`) {
 		t.Error("the page does not name the folders")
 	}
-	// The purge runs PowerShell on the two folders, and removes links in them
-	// without following them.
-	ps := decodedPurge(t, parts.functions)
+	// The uninstaller runs the script the installer puts in the app's folder.
+	if !strings.Contains(parts.functions, `-File "$INSTDIR\`+purgeScriptName+`"`) {
+		t.Error("the uninstaller does not run the purge script")
+	}
+	// The purge removes each link in the folders without following it.
 	for _, want := range []string{
 		`Remove-Top $env:APPDATA 'xSec Desktop'`,
 		`Remove-Top $env:LOCALAPPDATA 'XSec'`,
@@ -108,39 +109,34 @@ func TestUserDataUninstallParts(t *testing.T) {
 		`ReparsePoint`,
 		`exit 1`,
 	} {
-		if !strings.Contains(ps, want) {
+		if !strings.Contains(parts.script, want) {
 			t.Errorf("purge script lacks %q", want)
 		}
 	}
-	if strings.Contains(ps, "-Recurse") || strings.Contains(ps, "rmdir") || strings.Contains(ps, "RemoveDirectory") {
+	if strings.Contains(parts.script, "-Recurse") || strings.Contains(parts.script, "rmdir") || strings.Contains(parts.script, "RemoveDirectory") {
 		t.Error("purge script must not use a recursive delete that could follow links")
 	}
 }
 
-// decodedPurge returns the PowerShell script that the uninstaller runs,
-// decoded from its -EncodedCommand.
-func decodedPurge(t *testing.T, functions string) string {
-	t.Helper()
-	m := regexp.MustCompile(`-EncodedCommand ([A-Za-z0-9+/=]+)'`).FindStringSubmatch(functions)
-	if m == nil {
-		t.Fatal("the uninstaller has no -EncodedCommand")
+// NSIS cuts a string at nsisMaxString when the uninstaller runs: no line of
+// its code may be that long, and a page too long for it is refused.
+func TestUserDataFitsNSIS(t *testing.T) {
+	parts := userDataScript(t, []string{`$APPDATA\xSec Desktop`, `$APPDATA\XSec`, `$LOCALAPPDATA\XSec`})
+	for _, part := range []string{parts.head, parts.page, parts.call, parts.functions} {
+		for _, line := range strings.Split(part, "\n") {
+			if len(line) > nsisMaxString {
+				t.Errorf("a line of the uninstaller is %d characters: NSIS cuts it at %d", len(line), nsisMaxString)
+			}
+		}
 	}
-	raw, err := base64.StdEncoding.DecodeString(m[1])
-	if err != nil {
-		t.Fatal(err)
+	var long []string
+	for i := 0; i < 6; i++ {
+		long = append(long, `$APPDATA\`+strings.Repeat("N", 120)+strconv.Itoa(i))
 	}
-	units := make([]uint16, 0, len(raw)/2)
-	for i := 0; i+1 < len(raw); i += 2 {
-		units = append(units, uint16(raw[i])|uint16(raw[i+1])<<8)
-	}
-	return string(utf16.Decode(units))
-}
-
-func TestEncodePowerShell(t *testing.T) {
-	const script = "Write-Output 'héllo'\r\nexit 0\n"
-	got := decodedPurge(t, "-EncodedCommand "+encodePowerShell(script)+"'")
-	if got != script {
-		t.Fatalf("decoded %q, want %q", got, script)
+	c := &Config{Name: "Userdata App"}
+	c.Windows.UserData = long
+	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("userDataUninstall accepted folders that the page cannot show: %v", err)
 	}
 }
 
@@ -185,6 +181,17 @@ func TestWindowsInstallerUserData(t *testing.T) {
 	}
 	if !strings.Contains(string(script), "UninstPage custom un.UserDataPage un.UserDataLeave") {
 		t.Fatal("the uninstaller does not offer to delete the data")
+	}
+	// The purge script goes into the app's folder, next to the uninstaller.
+	if !strings.Contains(string(script), `File "/oname=`+purgeScriptName+`"`) {
+		t.Fatal("the installer does not install the purge script")
+	}
+	purge, err := os.ReadFile(filepath.Join(work, purgeScriptName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(purge, []byte{0xEF, 0xBB, 0xBF}) {
+		t.Error("the purge script has no byte-order mark: PowerShell would misread non-ASCII folder names")
 	}
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return
