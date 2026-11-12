@@ -23,6 +23,19 @@ ui.Field(c, "Email", func() {
 The control is the first element the function builds that takes the focus,
 or a group of them, such as a [radio group](radio.md).
 
+`ui.FieldWith` puts more beside the label, after its text and on its line:
+an icon whose [tooltip](tooltip.md) explains the field, where a description
+would show the text below the control at all times. What it builds is never
+the field's control, and a click on it does not focus the control:
+
+```go
+ui.FieldWith(c, "Token", func() {
+	ui.Icon(c, info).Tooltip("Read access to the repositories is enough.")
+}, func() {
+	ui.TextInput(c, &app.token)
+})
+```
+
 ## Forms
 
 A field's label sits above its control, as on the web. In a `ui.Form`, the

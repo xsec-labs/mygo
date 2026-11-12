@@ -68,6 +68,27 @@ func (fb *formBuild) alignLabels() {
 // The control is the first element fn builds that takes the focus, or a
 // group of them, such as a RadioGroup.
 func coreField(c *context, label string, fn func()) *node {
+	return buildField(c, label, nil, fn)
+}
+
+// FieldWith creates a Field with more beside its label, which beside
+// builds after the label's text, on its line: an icon whose tooltip
+// explains the field, say, where a Description would show the text below
+// the control at all times.
+//
+//	ui.FieldWith(c, "Token", func() {
+//		ui.Icon(c, info).Tooltip("Read access to the repositories is enough.")
+//	}, func() {
+//		ui.TextInput(c, &app.token)
+//	})
+//
+// What beside builds is never the field's control, even when it takes the
+// focus, and a click on it does not focus the control.
+func coreFieldWith(c *context, label string, beside func(), fn func()) *node {
+	return buildField(c, label, beside, fn)
+}
+
+func buildField(c *context, label string, beside func(), fn func()) *node {
 	t := c.theme
 	fp := &fieldParts{}
 	var f *node
@@ -82,7 +103,23 @@ func coreField(c *context, label string, fn func()) *node {
 		if c.form != nil {
 			box := coreRow(c).Justify(End).Shrink(0)
 			c.form.labels = append(c.form.labels, box)
-			box.Children(func() { fp.label = coreText(c, label) })
+			if beside != nil {
+				box.Gap(t.Space(1)).AlignItems(Center)
+			}
+			box.Children(func() {
+				fp.label = coreText(c, label)
+				if beside != nil {
+					beside()
+				}
+			})
+		} else if beside != nil {
+			// The label keeps to its own width, so that what is beside
+			// it follows its text, and wraps where the field is narrow.
+			box := coreRow(c).Gap(t.Space(1)).AlignItems(Center)
+			box.Children(func() {
+				fp.label = coreText(c, label).FontWeight(500).Shrink(1).MinWidth(0)
+				beside()
+			})
 		} else {
 			fp.label = coreText(c, label).FontWeight(500)
 		}
