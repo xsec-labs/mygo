@@ -3883,7 +3883,12 @@ renderer's (`gputest.Compare`).
   last: the folder is gone once the uninstall is done. It tries deleting
   each shortcut again for up to 5 s, as Explorer opens a new shortcut a
   few seconds after it appears, not sharing it for deletion, and `Delete`
-  fails meanwhile.
+  fails meanwhile. With `windows.userData`, the uninstaller's page offers to
+  delete the listed folders, and `/PURGE` deletes them without asking:
+  `userdata-purge.ps1`, which the installer puts in the app's folder, does
+  the deleting in PowerShell, which removes a link as a link and never goes
+  into its target. A link on the way to a listed folder stops its purge
+  (`nsis_userdata.go`).
   `makensis` comes from an installation of NSIS or, on Windows, where NSIS
   is rarely installed, from the official zip of the release that
   `Release` in `internal/nsis` pins, which the CLI downloads once, checks

@@ -15,7 +15,9 @@ import (
 // The folders are deleted by PowerShell rather than by RMDir /r. An app can
 // link a folder it works in (a junction into a project, for instance) into
 // its own data, and that link has to go without its target: PowerShell
-// removes each link as a link and never descends into it.
+// removes each link as a link and never descends into it. A link on the way
+// to a listed folder is different: Test-Path and GetAttributes follow it, so
+// the purge refuses to delete under such a link at all.
 //
 // The PowerShell script is a file the installer puts in the app's folder,
 // not part of the uninstaller's command line. NSIS cuts a string at
@@ -187,7 +189,19 @@ function Remove-Entry([string]$p) {
 }
 function Remove-Top([string]$root, [string]$rel) {
   try {
-    $p = Join-Path $root $rel
+    # Test-Path and GetAttributes follow a link on the way to a folder, so
+    # each folder above the listed one is checked first: a link there stops
+    # the purge of that folder before anything under it is deleted.
+    $parts = $rel.Split('\')
+    $p = $root
+    for ($i = 0; $i -lt $parts.Length; $i++) {
+      $name = $parts[$i]
+      $p = Join-Path $p $name
+      $above = $i -lt ($parts.Length - 1)
+      if ($above -and (Test-Path -LiteralPath $p) -and (Has ([IO.File]::GetAttributes($p)) ([IO.FileAttributes]::ReparsePoint))) {
+        throw ('not following the link on the way to ' + $p)
+      }
+    }
     if (Test-Path -LiteralPath $p) { Remove-Entry $p }
   } catch {
     $script:failed++

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,6 +114,10 @@ func TestUserDataUninstallParts(t *testing.T) {
 			t.Errorf("purge script lacks %q", want)
 		}
 	}
+	// The folders on the way to a listed one are checked for links first.
+	if !strings.Contains(parts.script, "Split(") {
+		t.Error("the purge script does not check the folders on the way to a listed one")
+	}
 	if strings.Contains(parts.script, "-Recurse") || strings.Contains(parts.script, "rmdir") || strings.Contains(parts.script, "RemoveDirectory") {
 		t.Error("purge script must not use a recursive delete that could follow links")
 	}
@@ -140,6 +145,47 @@ func TestUserDataFitsNSIS(t *testing.T) {
 	}
 }
 
+// buildUserDataInstaller builds the installer of an app named Setup Test
+// whose windows.userData is userData. It returns the setup program, and the
+// folder the build wrote its files to.
+func buildUserDataInstaller(t *testing.T, userData []string) (setup, work string) {
+	t.Helper()
+	list, err := json.Marshal(userData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := testModule(t, map[string]string{
+		"main.go":              "package main\n\nfunc main() {}\n",
+		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", "userData": ` + string(list) + `}}`,
+		"resources/data/a.txt": "a",
+		"resources/icon.png":   string(defaultIcon()),
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work = t.TempDir()
+	opts := buildOptions{sign: "-", work: work}
+	if opts.pkg, err = packageDir(c); err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := buildPlatform(c, "windows", "amd64", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return artifacts[len(artifacts)-1], work
+}
+
+// installSilently installs setup into a new folder, silently, and returns it.
+func installSilently(t *testing.T, setup string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "SetupTest")
+	if out, err := exec.Command(setup, "/S", "/D="+dir).CombinedOutput(); err != nil {
+		t.Fatalf("installing: %v\n%s", err, out)
+	}
+	return dir
+}
+
 // TestWindowsInstallerUserData builds an installer that offers to delete a
 // folder of the user's data, then checks what the uninstaller does with it.
 // It compiles wherever NSIS is installed; on Windows it installs the app and
@@ -155,26 +201,7 @@ func TestWindowsInstallerUserData(t *testing.T) {
 		t.Skip("NSIS is not installed")
 	}
 	const folder = "Setup Test Userdata"
-	dir := testModule(t, map[string]string{
-		"main.go":              "package main\n\nfunc main() {}\n",
-		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", "userData": ["$APPDATA\\` + folder + `"]}}`,
-		"resources/data/a.txt": "a",
-		"resources/icon.png":   string(defaultIcon()),
-	})
-	c, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	work := t.TempDir()
-	opts := buildOptions{sign: "-", work: work}
-	if opts.pkg, err = packageDir(c); err != nil {
-		t.Fatal(err)
-	}
-	artifacts, err := buildPlatform(c, "windows", "amd64", opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	setup := artifacts[len(artifacts)-1]
+	setup, work := buildUserDataInstaller(t, []string{`$APPDATA\` + folder})
 	script, err := os.ReadFile(filepath.Join(work, "installer.nsi"))
 	if err != nil {
 		t.Fatal(err)
@@ -206,14 +233,7 @@ func TestWindowsInstallerUserData(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(data) })
 
-	install := func() string {
-		dir := filepath.Join(t.TempDir(), "SetupTest")
-		if out, err := exec.Command(setup, "/S", "/D="+dir).CombinedOutput(); err != nil {
-			t.Fatalf("installing: %v\n%s", err, out)
-		}
-		return dir
-	}
-	install1 := install()
+	install1 := installSilently(t, setup)
 
 	// The data of the app: a file, and a junction to a folder the user works in.
 	project := filepath.Join(t.TempDir(), "project")
@@ -242,12 +262,65 @@ func TestWindowsInstallerUserData(t *testing.T) {
 	}
 
 	// /PURGE deletes it, and the link goes without its target.
-	install2 := install()
+	install2 := installSilently(t, setup)
 	uninstall(t, install2, "/PURGE")
 	if _, err := os.Stat(data); !os.IsNotExist(err) {
 		t.Errorf("/PURGE left %s (%v)", data, err)
 	}
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Errorf("/PURGE deleted the folder the junction points to: %v", err)
+	}
+}
+
+// TestWindowsInstallerUserDataLinkOnTheWay checks a link on the way to a
+// listed folder: the app's data folder is a junction to a folder the user
+// works in, and the purge lists a folder under it. Test-Path and GetAttributes
+// would follow the junction, so the purge must refuse it: nothing under the
+// junction may be deleted, and the junction stays.
+func TestWindowsInstallerUserDataLinkOnTheWay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	const folder = "Setup Test Linked"
+	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + folder + `\inner`})
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		t.Fatal("APPDATA is not set")
+	}
+	data := filepath.Join(appData, folder)
+	if _, err := os.Stat(data); err == nil {
+		t.Fatalf("%s exists: the test would use it", data)
+	}
+	// The folder the user works in, with the folder the purge lists under it.
+	project := filepath.Join(t.TempDir(), "project")
+	sentinel := filepath.Join(project, "inner", "sentinel.txt")
+	if err := os.MkdirAll(filepath.Dir(sentinel), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sentinel, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The app's data folder is a junction to the project.
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", data, project).CombinedOutput(); err != nil {
+		t.Fatalf("mklink: %v\n%s", err, out)
+	}
+	// os.Remove takes the link alone: it does not follow it.
+	t.Cleanup(func() { os.Remove(data) })
+
+	install := installSilently(t, setup)
+	uninstall(t, install, "/PURGE")
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("/PURGE deleted through a link on the way to the listed folder: %v", err)
+	}
+	if _, err := os.Stat(data); err != nil {
+		t.Errorf("/PURGE removed the link on the way to the listed folder: %v", err)
 	}
 }
