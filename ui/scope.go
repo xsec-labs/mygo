@@ -123,7 +123,9 @@ func (rt *engine) scopeOf(id uint64) uint64 {
 
 // overlayShortcut registers that overlay e handles mods+key while the
 // focused element and those around it do not, the overlay made last (on
-// top) first, and reports whether such a key was delivered to it.
+// top) first, and reports whether such a key was delivered to it. A key
+// that closes e with the focus in it came from the keyboard, so the focus
+// that e gives back as it goes (restoreFocus) shows, as Tab's does.
 func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	id := e.id
 	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key, overlay: true, rank: overlayRank(e)})
@@ -131,8 +133,32 @@ func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
 			rt.consumed = true
+			if rt.focusWithin(id) {
+				rt.focusVisible = true
+			}
 			return true
 		}
+	}
+	return false
+}
+
+// focusWithin reports whether the focus is on element id of the last frame
+// or inside it, by the parents: a tip or a popover whose anchor has the
+// focus is not inside its anchor, so a key closing it leaves the ring alone.
+func (rt *engine) focusWithin(id uint64) bool {
+	f := rt.focused
+	for range 1000 { // against cycles of parents
+		if f == 0 {
+			return false
+		}
+		if f == id {
+			return true
+		}
+		s := rt.states[f]
+		if s == nil {
+			return false
+		}
+		f = s.parent
 	}
 	return false
 }

@@ -35,7 +35,8 @@ popover's elements follow its anchor as Tab moves.
 Escape closes the overlay on top, a select's popup before the dialog it is
 in, unless the focused element takes it, as a terminal does; and an
 overlay that closes with the focus in it gives the focus back to the
-element that had it as it opened, its button say.
+element that had it as it opened, its button say. When Escape closed the
+overlay, that focus shows as Tab's does.
 
 A press outside a popover closes it and goes on to what is under the
 pointer, as with the web's popovers: a click on another button closes the
