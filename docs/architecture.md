@@ -3887,8 +3887,9 @@ renderer's (`gputest.Compare`).
   delete the listed folders, and `/PURGE` deletes them without asking:
   `userdata-purge.ps1`, which the installer puts in the app's folder, does
   the deleting in PowerShell, which removes a link as a link and never goes
-  into its target. A link on the way to a listed folder stops its purge
-  (`nsis_userdata.go`).
+  into its target. A purge that fails, such as a link on the way to a listed folder or a file in
+  use, runs first in the uninstall section and stops it before anything else is
+  removed, so the uninstall can run again (`nsis_userdata.go`).
   `makensis` comes from an installation of NSIS or, on Windows, where NSIS
   is rarely installed, from the official zip of the release that
   `Release` in `internal/nsis` pins, which the CLI downloads once, checks

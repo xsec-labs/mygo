@@ -285,7 +285,7 @@ func TestWindowsInstallerUserData(t *testing.T) {
 // listed folder: the app's data folder is a junction to a folder the user
 // works in, and the purge lists a folder under it. Test-Path and GetAttributes
 // would follow the junction, so the purge must refuse it: nothing under the
-// junction may be deleted, and the junction stays.
+// junction may be deleted, and the junction stays: the uninstall stops there.
 func TestWindowsInstallerUserDataLinkOnTheWay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compiles programs")
@@ -325,12 +325,149 @@ func TestWindowsInstallerUserDataLinkOnTheWay(t *testing.T) {
 	t.Cleanup(func() { os.Remove(data) })
 
 	install := installSilently(t, setup)
-	uninstall(t, install, "/PURGE")
+	if err := uninstallInPlace(t, install, "/PURGE"); err == nil {
+		t.Error("the uninstall reported success although the purge refused the link")
+	}
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Errorf("/PURGE deleted through a link on the way to the listed folder: %v", err)
 	}
-	if _, err := os.Stat(data); err != nil {
+	if _, err := os.Lstat(data); err != nil {
 		t.Errorf("/PURGE removed the link on the way to the listed folder: %v", err)
+	}
+	// Without the link, the same uninstall runs to the end.
+	if err := os.Remove(data); err != nil {
+		t.Fatal(err)
+	}
+	uninstall(t, install, "/PURGE")
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("the retried /PURGE deleted through the link: %v", err)
+	}
+}
+
+// uninstallInPlace runs the uninstaller of the app installed in dir silently,
+// with the extra arguments, and returns its error. It runs in place, from dir,
+// not from a copy, so the call waits until the uninstall is over and its exit
+// code is the uninstaller's own.
+func uninstallInPlace(t *testing.T, dir string, args ...string) error {
+	t.Helper()
+	args = append(append([]string{"/S"}, args...), "_?="+dir)
+	out, err := exec.Command(filepath.Join(dir, "Uninstall.exe"), args...).CombinedOutput()
+	t.Logf("uninstaller: %s", out)
+	return err
+}
+
+// TestWindowsInstallerUserDataLocked checks a file of the data that is in use:
+// the purge cannot delete it, so the uninstall stops before it removes anything
+// else. The app and its uninstaller stay, and the same uninstall runs to the end
+// once the file is free.
+func TestWindowsInstallerUserDataLocked(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	const folder = "Setup Test Locked"
+	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + folder})
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		t.Fatal("APPDATA is not set")
+	}
+	data := filepath.Join(appData, folder)
+	if _, err := os.Stat(data); err == nil {
+		t.Fatalf("%s exists: the test would delete it", data)
+	}
+	t.Cleanup(func() { os.RemoveAll(data) })
+
+	install := installSilently(t, setup)
+	if err := os.MkdirAll(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(data, "locked.txt")
+	if err := os.WriteFile(locked, []byte("in use"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// os.Open does not share deletion, so the purge cannot delete the file
+	// while the handle is open.
+	f, err := os.Open(locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+
+	if err := uninstallInPlace(t, install, "/PURGE"); err == nil {
+		t.Error("the uninstall reported success although the purge failed")
+	}
+	if _, err := os.Stat(locked); err != nil {
+		t.Errorf("the purge deleted the file in use: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(install, "Uninstall.exe")); err != nil {
+		t.Errorf("the uninstall stopped, but its uninstaller is gone: %v", err)
+	}
+
+	// Once the file is free, the same uninstall runs to the end.
+	f.Close()
+	uninstall(t, install, "/PURGE")
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Errorf("the retried /PURGE left %s (%v)", data, err)
+	}
+}
+
+// TestWindowsInstallerUserDataDanglingLink checks a folder of the data that is
+// a junction whose target is gone. Test-Path reads such a link as absent, so
+// the purge skipped it and left the junction behind while reporting success.
+// The junction must go: its target is not there to keep, and it holds nothing.
+func TestWindowsInstallerUserDataDanglingLink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	const folder = "Setup Test Dangling"
+	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + folder})
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		t.Fatal("APPDATA is not set")
+	}
+	data := filepath.Join(appData, folder)
+	if _, err := os.Lstat(data); err == nil {
+		t.Fatalf("%s exists: the test would use it", data)
+	}
+	// A junction to a folder that is removed at once, so the junction dangles.
+	target := filepath.Join(t.TempDir(), "gone")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", data, target).CombinedOutput(); err != nil {
+		t.Fatalf("mklink: %v\n%s", err, out)
+	}
+	// os.Remove takes the link alone: it does not follow it.
+	t.Cleanup(func() { os.Remove(data) })
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Fatalf("the junction does not dangle: %v", err)
+	}
+	if _, err := os.Lstat(data); err != nil {
+		t.Fatalf("the junction is not there: %v", err)
+	}
+
+	install := installSilently(t, setup)
+	uninstall(t, install, "/PURGE")
+	if _, err := os.Lstat(data); !os.IsNotExist(err) {
+		t.Errorf("/PURGE left the dangling junction %s (%v)", data, err)
 	}
 }
 

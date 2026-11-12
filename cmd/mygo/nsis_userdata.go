@@ -17,8 +17,11 @@ import (
 // link a folder it works in (a junction into a project, for instance) into
 // its own data, and that link has to go without its target: PowerShell
 // removes each link as a link and never descends into it. A link on the way
-// to a listed folder is different: Test-Path and GetAttributes follow it, so
-// the purge refuses to delete under such a link at all.
+// to a listed folder is different: the purge refuses to delete under such a
+// link at all, since a path through it would reach the link's target. The
+// purge reads each folder's listing rather than testing paths, because
+// Test-Path reads a link whose target is gone as absent, and such a link is
+// removed like any other.
 //
 // The PowerShell script is a file the installer puts in the app's folder,
 // not part of the uninstaller's command line. NSIS cuts a string at
@@ -77,7 +80,7 @@ func validUserDataName(part string) bool {
 type userDataParts struct {
 	head      string // after MUI2.nsh: includes and variables
 	page      string // between the confirm page and the progress page
-	call      string // in the uninstall section, before the app's folder goes
+	call      string // first in the uninstall section, before anything is removed
 	functions string // after the uninstall section
 	script    string // the PowerShell script the uninstaller runs, as purgeScriptName
 }
@@ -150,7 +153,7 @@ Var DeleteUserData
 Var UserDataCheckbox
 `,
 		page: "UninstPage custom un.UserDataPage un.UserDataLeave\n",
-		call: "  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
+		call: "  ; The data goes first: if it cannot all be deleted, nothing else is removed.\n  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
 		functions: `Function un.onInit
   StrCpy $DeleteUserData 0
   ${un.GetParameters} $R0
@@ -185,12 +188,17 @@ Function un.UserDataLeave
   ${EndIf}
 FunctionEnd
 
+; A purge that fails stops the uninstall before anything else is removed, so the
+; uninstaller, its entry and the shortcuts stay, and the uninstall can run again
+; once the app is closed.
 Function un.DeleteUserData
   nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\` + purgeScriptName + `"'
   Pop $0
   ${If} $0 != "0"
     IfSilent +2 0
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Some of the data of ` + nsisEscape(c.Name) + ` could not be deleted. Close the app and delete the rest by hand."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "The uninstall was cancelled: some of the data of ` + nsisEscape(c.Name) + ` could not be deleted. Close the app and run the uninstaller again."
+    SetErrorLevel 1
+    Quit
   ${EndIf}
 FunctionEnd
 `,
@@ -205,39 +213,48 @@ FunctionEnd
 const purgeScriptHead = `$ErrorActionPreference = 'Stop'
 $script:failed = 0
 function Has([IO.FileAttributes]$a, [IO.FileAttributes]$f) { ($a -band $f) -eq $f }
-function Remove-Entry([string]$p) {
+function Find-Entry([string]$dir, [string]$name) {
+  # The listing of the folder shows a link whose target is gone as an entry;
+  # Test-Path reads such a link as absent.
+  if (-not [IO.Directory]::Exists($dir)) { return $null }
+  foreach ($e in (New-Object System.IO.DirectoryInfo -ArgumentList $dir).GetFileSystemInfos($name)) { return $e }
+  return $null
+}
+function Remove-Entry($e) {
   try {
-    $a = [IO.File]::GetAttributes($p)
-    if (Has $a ([IO.FileAttributes]::Directory)) {
-      if (-not (Has $a ([IO.FileAttributes]::ReparsePoint))) {
-        foreach ($c in [IO.Directory]::GetFileSystemEntries($p)) { Remove-Entry $c }
+    $p = $e.FullName
+    if (Has ($e.Attributes) ([IO.FileAttributes]::Directory)) {
+      if (-not (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint))) {
+        foreach ($c in (New-Object System.IO.DirectoryInfo -ArgumentList $p).GetFileSystemInfos()) { Remove-Entry $c }
       }
       [IO.Directory]::Delete($p, $false)
     } else {
-      if (Has $a ([IO.FileAttributes]::ReadOnly)) { [IO.File]::SetAttributes($p, [IO.FileAttributes]::Normal) }
+      if (Has ($e.Attributes) ([IO.FileAttributes]::ReadOnly)) { [IO.File]::SetAttributes($p, [IO.FileAttributes]::Normal) }
       [IO.File]::Delete($p)
     }
   } catch {
     $script:failed++
-    [Console]::Error.WriteLine($p + ': ' + $_.Exception.Message)
+    [Console]::Error.WriteLine($e.FullName + ': ' + $_.Exception.Message)
   }
 }
 function Remove-Top([string]$root, [string]$rel) {
   try {
-    # Test-Path and GetAttributes follow a link on the way to a folder, so
-    # each folder above the listed one is checked first: a link there stops
-    # the purge of that folder before anything under it is deleted.
+    # Each folder above the listed one is found in its parent first. A link
+    # there stops the purge of the folder below it, before anything under it
+    # is deleted. A link whose target is gone holds nothing, so it stops nothing.
     $parts = $rel.Split('\')
-    $p = $root
-    for ($i = 0; $i -lt $parts.Length; $i++) {
-      $name = $parts[$i]
-      $p = Join-Path $p $name
-      $above = $i -lt ($parts.Length - 1)
-      if ($above -and (Test-Path -LiteralPath $p) -and (Has ([IO.File]::GetAttributes($p)) ([IO.FileAttributes]::ReparsePoint))) {
-        throw ('not following the link on the way to ' + $p)
+    $dir = $root
+    for ($i = 0; $i -lt $parts.Length - 1; $i++) {
+      $e = Find-Entry $dir ($parts[$i])
+      if ($null -eq $e) { return }
+      if (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint)) {
+        if (-not [IO.Directory]::Exists($e.FullName)) { return }
+        throw ('not following the link on the way to ' + $e.FullName)
       }
+      $dir = $e.FullName
     }
-    if (Test-Path -LiteralPath $p) { Remove-Entry $p }
+    $last = Find-Entry $dir ($parts[$parts.Length - 1])
+    if ($null -ne $last) { Remove-Entry $last }
   } catch {
     $script:failed++
     [Console]::Error.WriteLine($_.Exception.Message)

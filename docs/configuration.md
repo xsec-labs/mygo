@@ -130,7 +130,7 @@ See [macOS](distribution.md#macos).
 | `certificate` | | a code signing certificate (`.pfx`) for the executable, the unsigned executables and libraries among the resources, and the installer; its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |
-| `userData` | | folders of the user's data under `$APPDATA` or `$LOCALAPPDATA`, such as `"$APPDATA\\My App"`, that the app alone uses and the uninstaller offers to delete: a checkbox, not checked by default; a silent uninstall (`/S`) keeps them unless it is given `/PURGE`. A link on the way to one of them stops its deletion |
+| `userData` | | folders of the user's data under `$APPDATA` or `$LOCALAPPDATA`, such as `"$APPDATA\\My App"`, that the app alone uses and the uninstaller offers to delete: a checkbox, not checked by default; a silent uninstall (`/S`) keeps them unless it is given `/PURGE`. A purge that fails, such as a link on the way to one of them or a file in use, stops the uninstall so that it can run again |
 | `userDataNote` | | one line of plain text on the uninstaller's page, saying what the folders hold, e.g. "Your vault and your cloud login credentials will be deleted."; it needs `userData`, and is at most 120 characters |
 
 See [Windows](distribution.md#windows).
