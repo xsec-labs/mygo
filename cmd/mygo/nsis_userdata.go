@@ -80,7 +80,7 @@ func validUserDataName(part string) bool {
 type userDataParts struct {
 	head      string // after MUI2.nsh: includes and variables
 	page      string // between the confirm page and the progress page
-	call      string // in the uninstall section, before the app's folder goes
+	call      string // first in the uninstall section, before anything is removed
 	functions string // after the uninstall section
 	script    string // the PowerShell script the uninstaller runs, as purgeScriptName
 }
@@ -153,7 +153,7 @@ Var DeleteUserData
 Var UserDataCheckbox
 `,
 		page: "UninstPage custom un.UserDataPage un.UserDataLeave\n",
-		call: "  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
+		call: "  ; The data goes first: if it cannot all be deleted, nothing else is removed.\n  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
 		functions: `Function un.onInit
   StrCpy $DeleteUserData 0
   ${un.GetParameters} $R0
@@ -188,12 +188,17 @@ Function un.UserDataLeave
   ${EndIf}
 FunctionEnd
 
+; A purge that fails stops the uninstall before anything else is removed, so the
+; uninstaller, its entry and the shortcuts stay, and the uninstall can run again
+; once the app is closed.
 Function un.DeleteUserData
   nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\` + purgeScriptName + `"'
   Pop $0
   ${If} $0 != "0"
     IfSilent +2 0
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Some of the data of ` + nsisEscape(c.Name) + ` could not be deleted. Close the app and delete the rest by hand."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "The uninstall was cancelled: some of the data of ` + nsisEscape(c.Name) + ` could not be deleted. Close the app and run the uninstaller again."
+    SetErrorLevel 1
+    Quit
   ${EndIf}
 FunctionEnd
 `,

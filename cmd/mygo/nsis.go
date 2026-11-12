@@ -228,12 +228,12 @@ Function un.DeleteShortcut
 FunctionEnd
 
 Section "Uninstall"
-  Push "$SMPROGRAMS\` + shortcut + `"
+` + userData.call + `  Push "$SMPROGRAMS\` + shortcut + `"
   Call un.DeleteShortcut
   Push "$DESKTOP\` + shortcut + `"
   Call un.DeleteShortcut
   DeleteRegKey HKCU ` + nsisString(uninstallKey) + `
-` + unregister + userData.call + `  ; Last, so that the app's folder is gone once the uninstall is done:
+` + unregister + `  ; Last, so that the app's folder is gone once the uninstall is done:
   ; the uninstaller runs from a copy of itself that nothing waits for.
   RMDir /r "$INSTDIR"
 SectionEnd
