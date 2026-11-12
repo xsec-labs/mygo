@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // The uninstaller of a Windows installer deletes the data of the app only
@@ -81,16 +82,35 @@ type userDataParts struct {
 	script    string // the PowerShell script the uninstaller runs, as purgeScriptName
 }
 
+// maxUserDataNote is the longest windows.userDataNote, in characters: the
+// uninstaller's page has room for a line or two of it.
+const maxUserDataNote = 120
+
+// checkUserDataNote reports whether the note of windows.userDataNote can go on
+// the uninstaller's page: it needs windows.userData, it is one line of text,
+// and it is no longer than maxUserDataNote characters.
+func checkUserDataNote(w *Windows) error {
+	note := w.UserDataNote
+	if note == "" {
+		return nil
+	}
+	if len(w.UserData) == 0 {
+		return fmt.Errorf("windows.userDataNote needs windows.userData")
+	}
+	if strings.IndexFunc(note, unicode.IsControl) >= 0 {
+		return fmt.Errorf("windows.userDataNote is one line of text")
+	}
+	if utf8.RuneCountInString(note) > maxUserDataNote {
+		return fmt.Errorf("windows.userDataNote is too long: at most %d characters", maxUserDataNote)
+	}
+	return nil
+}
+
 // userDataUninstall returns the parts of the installer script for
 // windows.userData.
 func userDataUninstall(c *Config) (userDataParts, error) {
-	if note := c.Windows.UserDataNote; note != "" {
-		if len(c.Windows.UserData) == 0 {
-			return userDataParts{}, fmt.Errorf("windows.userDataNote needs windows.userData")
-		}
-		if strings.IndexFunc(note, unicode.IsControl) >= 0 {
-			return userDataParts{}, fmt.Errorf("windows.userDataNote is one line of text")
-		}
+	if err := checkUserDataNote(&c.Windows); err != nil {
+		return userDataParts{}, err
 	}
 	if len(c.Windows.UserData) == 0 {
 		return userDataParts{}, nil

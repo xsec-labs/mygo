@@ -268,6 +268,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("windows.userData: %w", err)
 		}
 	}
+	if err := checkUserDataNote(&c.Windows); err != nil {
+		return err
+	}
 	if cmd := c.Linux.Command; cmd != "" && !commandRe.MatchString(cmd) {
 		return fmt.Errorf("linux.command %q is not a command name (a letter or digit, then letters, digits, ., _, + or -)", cmd)
 	}

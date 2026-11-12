@@ -358,8 +358,12 @@ func TestUserDataNote(t *testing.T) {
 	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "one line of text") {
 		t.Errorf("a note of two lines was accepted: %v", err)
 	}
-	// The page's text is one NSIS string, so a note that makes it too long is refused.
-	c.Windows.UserDataNote = strings.Repeat("N", nsisMaxString)
+	// A note of the longest length the page takes is accepted; a longer one is refused.
+	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote)
+	if _, err := userDataUninstall(c); err != nil {
+		t.Errorf("a note of %d characters was refused: %v", maxUserDataNote, err)
+	}
+	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote+1)
 	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("a note too long for the page was accepted: %v", err)
 	}
@@ -384,5 +388,23 @@ func TestUserDataNoteInstaller(t *testing.T) {
 	}
 	if !strings.Contains(string(script), `as well?$\r$\n`+note+`$\r$\nIt is kept in these folders:`) {
 		t.Fatal("the uninstaller's page lacks the note")
+	}
+}
+
+// TestUserDataNoteConfigIsChecked checks that loadConfig refuses a note the
+// uninstaller's page cannot show, on every platform, not only where NSIS runs.
+func TestUserDataNoteConfigIsChecked(t *testing.T) {
+	for _, tc := range []struct{ name, windows, want string }{
+		{"without userData", `"userDataNote": "Your vault is deleted."`, "needs windows.userData"},
+		{"two lines", `"userData": ["$APPDATA\\xSec"], "userDataNote": "one\ntwo"`, "one line of text"},
+		{"too long", `"userData": ["$APPDATA\\xSec"], "userDataNote": "` + strings.Repeat("N", maxUserDataNote+1) + `"`, "too long"},
+	} {
+		dir := testModule(t, map[string]string{
+			"main.go":   "package main\n\nfunc main() {}\n",
+			"mygo.json": `{"name": "Userdata", "identifier": "com.example.userdata", "version": "1.0.0", "windows": {` + tc.windows + `}}`,
+		})
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: loadConfig = %v, want an error with %q", tc.name, err, tc.want)
+		}
 	}
 }

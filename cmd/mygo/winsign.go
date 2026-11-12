@@ -39,7 +39,8 @@ type Windows struct {
 	// folders the app works in are kept.
 	UserData []string `json:"userData"`
 	// UserDataNote says on the uninstaller's page what the folders of
-	// UserData hold, as one line of plain text, e.g. "Your vault and your
+	// UserData hold, as one line of plain text of at most 120 characters, e.g.
+	// "Your vault and your
 	// cloud sign-in are deleted." It shows between the question and the
 	// folders, and needs UserData.
 	UserDataNote string `json:"userDataNote"`
