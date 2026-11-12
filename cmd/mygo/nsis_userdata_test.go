@@ -146,17 +146,26 @@ func TestUserDataFitsNSIS(t *testing.T) {
 }
 
 // buildUserDataInstaller builds the installer of an app named Setup Test
-// whose windows.userData is userData. It returns the setup program, and the
+// whose windows.userData is userData, and whose windows.userDataNote is note
+// when one is given. It returns the setup program, and the
 // folder the build wrote its files to.
-func buildUserDataInstaller(t *testing.T, userData []string) (setup, work string) {
+func buildUserDataInstaller(t *testing.T, userData []string, note ...string) (setup, work string) {
 	t.Helper()
 	list, err := json.Marshal(userData)
 	if err != nil {
 		t.Fatal(err)
 	}
+	userDataJSON := `"userData": ` + string(list)
+	if len(note) > 0 {
+		text, err := json.Marshal(note[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		userDataJSON += `, "userDataNote": ` + string(text)
+	}
 	dir := testModule(t, map[string]string{
 		"main.go":              "package main\n\nfunc main() {}\n",
-		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", "userData": ` + string(list) + `}}`,
+		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", ` + userDataJSON + `}}`,
 		"resources/data/a.txt": "a",
 		"resources/icon.png":   string(defaultIcon()),
 	})
@@ -322,5 +331,80 @@ func TestWindowsInstallerUserDataLinkOnTheWay(t *testing.T) {
 	}
 	if _, err := os.Stat(data); err != nil {
 		t.Errorf("/PURGE removed the link on the way to the listed folder: %v", err)
+	}
+}
+
+// TestUserDataNote checks the line the uninstaller's page shows about the
+// folders. It sits between the question and the folders, escaped for NSIS;
+// it needs windows.userData, and it is one line of text.
+func TestUserDataNote(t *testing.T) {
+	c := &Config{Name: "Userdata App"}
+	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`}
+	c.Windows.UserDataNote = `Your $vault and your "cloud" login credentials will be deleted.`
+	parts, err := userDataUninstall(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `as well?$\r$\n` + nsisEscape(c.Windows.UserDataNote) + `$\r$\nIt is kept in these folders:`
+	if !strings.Contains(parts.functions, want) {
+		t.Errorf("the page lacks the note between the question and the folders: %q", want)
+	}
+	c.Windows.UserData = nil
+	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "needs windows.userData") {
+		t.Errorf("a note without windows.userData was accepted: %v", err)
+	}
+	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`}
+	c.Windows.UserDataNote = "two\nlines"
+	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "one line of text") {
+		t.Errorf("a note of two lines was accepted: %v", err)
+	}
+	// A note of the longest length the page takes is accepted; a longer one is refused.
+	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote)
+	if _, err := userDataUninstall(c); err != nil {
+		t.Errorf("a note of %d characters was refused: %v", maxUserDataNote, err)
+	}
+	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote+1)
+	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Errorf("a note too long for the page was accepted: %v", err)
+	}
+}
+
+// TestUserDataNoteInstaller checks that the note reaches the page of the
+// installer that NSIS compiles.
+func TestUserDataNoteInstaller(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	const note = "Your vault and your cloud login credentials will be deleted."
+	_, work := buildUserDataInstaller(t, []string{`$APPDATA\Setup Test Note`}, note)
+	script, err := os.ReadFile(filepath.Join(work, "installer.nsi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), `as well?$\r$\n`+note+`$\r$\nIt is kept in these folders:`) {
+		t.Fatal("the uninstaller's page lacks the note")
+	}
+}
+
+// TestUserDataNoteConfigIsChecked checks that loadConfig refuses a note the
+// uninstaller's page cannot show, on every platform, not only where NSIS runs.
+func TestUserDataNoteConfigIsChecked(t *testing.T) {
+	for _, tc := range []struct{ name, windows, want string }{
+		{"without userData", `"userDataNote": "Your vault is deleted."`, "needs windows.userData"},
+		{"two lines", `"userData": ["$APPDATA\\xSec"], "userDataNote": "one\ntwo"`, "one line of text"},
+		{"too long", `"userData": ["$APPDATA\\xSec"], "userDataNote": "` + strings.Repeat("N", maxUserDataNote+1) + `"`, "too long"},
+	} {
+		dir := testModule(t, map[string]string{
+			"main.go":   "package main\n\nfunc main() {}\n",
+			"mygo.json": `{"name": "Userdata", "identifier": "com.example.userdata", "version": "1.0.0", "windows": {` + tc.windows + `}}`,
+		})
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: loadConfig = %v, want an error with %q", tc.name, err, tc.want)
+		}
 	}
 }
