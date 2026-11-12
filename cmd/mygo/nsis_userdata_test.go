@@ -334,6 +334,59 @@ func TestWindowsInstallerUserDataLinkOnTheWay(t *testing.T) {
 	}
 }
 
+// TestWindowsInstallerUserDataDanglingLink checks a folder of the data that is
+// a junction whose target is gone. Test-Path reads such a link as absent, so
+// the purge skipped it and left the junction behind while reporting success.
+// The junction must go: its target is not there to keep, and it holds nothing.
+func TestWindowsInstallerUserDataDanglingLink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	const folder = "Setup Test Dangling"
+	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + folder})
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		t.Fatal("APPDATA is not set")
+	}
+	data := filepath.Join(appData, folder)
+	if _, err := os.Lstat(data); err == nil {
+		t.Fatalf("%s exists: the test would use it", data)
+	}
+	// A junction to a folder that is removed at once, so the junction dangles.
+	target := filepath.Join(t.TempDir(), "gone")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", data, target).CombinedOutput(); err != nil {
+		t.Fatalf("mklink: %v\n%s", err, out)
+	}
+	// os.Remove takes the link alone: it does not follow it.
+	t.Cleanup(func() { os.Remove(data) })
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Fatalf("the junction does not dangle: %v", err)
+	}
+	if _, err := os.Lstat(data); err != nil {
+		t.Fatalf("the junction is not there: %v", err)
+	}
+
+	install := installSilently(t, setup)
+	uninstall(t, install, "/PURGE")
+	if _, err := os.Lstat(data); !os.IsNotExist(err) {
+		t.Errorf("/PURGE left the dangling junction %s (%v)", data, err)
+	}
+}
+
 // TestUserDataNote checks the line the uninstaller's page shows about the
 // folders. It sits between the question and the folders, escaped for NSIS;
 // it needs windows.userData, and it is one line of text.
