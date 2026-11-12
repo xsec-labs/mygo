@@ -1123,6 +1123,34 @@ func Field(c *Context, label string, fn func()) Element {
 	return wrapElement(_e)
 }
 
+// FieldWith creates a Field with more beside its label, which beside
+// builds after the label's text, on its line: a small button whose tooltip
+// explains the field, say, where a Description would show the text below
+// the control at all times. Build a button there, not an icon alone: the
+// Tab key reaches a button, and its tooltip shows as it takes the focus.
+//
+//	ui.FieldWith(c, "Token", func() {
+//		ui.ButtonBase(c).Label("About the token").
+//			Tooltip("Read access to the repositories is enough.").
+//			Children(func() { ui.Icon(c, info) })
+//	}, func() {
+//		ui.TextInput(c, &app.token)
+//	})
+//
+// What beside builds is never the field's control, even when it takes the
+// focus and fn builds nothing that does, and a click on it does not focus
+// the control. The Tab key reaches it before the control.
+func FieldWith(c *Context, label string, beside func(), fn func()) Element {
+	_ctx := c.build()
+	if _ctx == nil {
+		return Element{}
+	}
+	_ctx.rt.beginBuild()
+	_e := coreFieldWith(_ctx, label, beside, fn)
+	_ctx.rt.endBuild()
+	return wrapElement(_e)
+}
+
 // Fieldset creates a group of the fields that fn builds, under legend,
 // which names the group for assistive technology. Disabled disables them
 // all. In a Form, their labels line up with those of the other fields.
@@ -5251,8 +5279,9 @@ func (_handle Element) Selectable() Element {
 	return wrapElement(_node.Selectable())
 }
 
-// Selected shows the element as chosen among its siblings, in the accent
-// color, as a row of a list, and tells assistive technology it is.
+// Selected shows the element as chosen among its siblings, in the chosen
+// colors of the theme (the accent by default), as a row of a list, and tells
+// assistive technology it is.
 func (_handle Element) Selected(on bool) Element {
 	_node := _handle.node()
 	if _node == nil {
