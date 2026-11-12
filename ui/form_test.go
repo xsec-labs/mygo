@@ -132,6 +132,21 @@ func TestFieldWith(t *testing.T) {
 	if token != "abc" {
 		t.Errorf("typed %q", token)
 	}
+	// The Tab key reaches what is beside the label before the control, as
+	// they read.
+	tt.Click("Name")
+	tt.Key(Shift, KeyTab)
+	if !tt.Focused("Token") {
+		t.Error("Shift+Tab from the next field did not reach the control")
+	}
+	tt.Key(Shift, KeyTab)
+	if !tt.Focused("About the token") {
+		t.Error("Shift+Tab from the control did not reach what is beside the label")
+	}
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Token") {
+		t.Error("Tab from what is beside the label did not reach the control")
+	}
 	// In a form the labels sit in a column of their own, and what is
 	// beside one stays with it, before the control.
 	form = true
@@ -146,6 +161,34 @@ func TestFieldWith(t *testing.T) {
 	}
 	if about.X < label.X+label.W || about.X+about.W > input.X {
 		t.Errorf("in a form, beside is not between the label and the control: label %+v, beside %+v, input %+v", label, about, input)
+	}
+}
+
+// What is beside the label is not the field's control, even when it is the
+// only element of the field that takes the focus.
+func TestFieldWithBesideIsNotTheControl(t *testing.T) {
+	helped := 0
+	var field *node
+	tt := coreNewTester(func(c *context) {
+		field = coreFieldWith(c, "Plan", func() {
+			if coreButtonBase(c).Label("About the plan").Size(16, 16).Clicked() {
+				helped++
+			}
+		}, func() { coreText(c, "Free") })
+	}, 500, 300)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	if field.field.control != nil {
+		t.Errorf("the field took %q for its control", field.field.control.label)
+	}
+	// The button keeps its own name, and a click on the label does nothing
+	// to it.
+	if n := accessNode(t, tt.h.access, platform.RoleButton, "About the plan"); n.Label != "About the plan" {
+		t.Errorf("the label named what is beside it: %+v", n)
+	}
+	label, _ := tt.Find("Plan")
+	tt.ClickAt(label.X+label.W/2, label.Y+label.H/2)
+	if helped != 0 || tt.Focused("About the plan") {
+		t.Errorf("a click on the label: clicked %d, focused %v", helped, tt.Focused("About the plan"))
 	}
 }
 

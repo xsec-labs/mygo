@@ -1124,18 +1124,22 @@ func Field(c *Context, label string, fn func()) Element {
 }
 
 // FieldWith creates a Field with more beside its label, which beside
-// builds after the label's text, on its line: an icon whose tooltip
+// builds after the label's text, on its line: a small button whose tooltip
 // explains the field, say, where a Description would show the text below
-// the control at all times.
+// the control at all times. Build a button there, not an icon alone: the
+// Tab key reaches a button, and its tooltip shows as it takes the focus.
 //
 //	ui.FieldWith(c, "Token", func() {
-//		ui.Icon(c, info).Tooltip("Read access to the repositories is enough.")
+//		ui.ButtonBase(c).Label("About the token").
+//			Tooltip("Read access to the repositories is enough.").
+//			Children(func() { ui.Icon(c, info) })
 //	}, func() {
 //		ui.TextInput(c, &app.token)
 //	})
 //
 // What beside builds is never the field's control, even when it takes the
-// focus, and a click on it does not focus the control.
+// focus and fn builds nothing that does, and a click on it does not focus
+// the control. The Tab key reaches it before the control.
 func FieldWith(c *Context, label string, beside func(), fn func()) Element {
 	_ctx := c.build()
 	if _ctx == nil {
