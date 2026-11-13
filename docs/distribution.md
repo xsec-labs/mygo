@@ -393,11 +393,14 @@ folder the user works in is removed and that folder is left alone. A listed
 folder that is itself a link is removed as a link too, and its target is kept.
 `windows.userDataNote` puts one line of text on that page, such as what the
 folders hold, between the question and the list of folders.
-A link on the way to a listed folder, above it in the data, stops its purge:
-nothing under that link is deleted. A purge that fails, by such a link or by a
-file in use, stops the uninstall before anything else is removed, so the
-uninstaller and the app's entry stay, and the uninstall can run again once the
-app is closed. Interactively, a message box says so.
+A link on the way to a listed folder, above it in the data, stops the purge:
+nothing under that link is deleted. The deletion is all or nothing: the purge
+first checks every listed folder, and when a file in them is in use, or a
+folder cannot be checked, it deletes nothing and the uninstall stops before
+anything else is removed, so the uninstaller and the app's entry stay, and the
+uninstall can run again once the app is closed. A file that comes into use
+after the check can still leave part of the data behind. Interactively, a
+message box says so.
 
 The installer is made with [NSIS](https://nsis.sourceforge.io). On
 Windows, `mygo build` uses NSIS when it is installed, and otherwise

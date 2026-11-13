@@ -54,12 +54,12 @@ func TestUserDataConfigIsChecked(t *testing.T) {
 }
 
 // userDataScript returns the parts of the uninstaller of an app with the
-// given windows.userData.
+// given windows.userData, in English.
 func userDataScript(t *testing.T, userData []string) userDataParts {
 	t.Helper()
 	c := &Config{Name: "Userdata App"}
 	c.Windows.UserData = userData
-	parts, err := userDataUninstall(c)
+	parts, err := userDataUninstall(c, []string{"English"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +94,8 @@ func TestUserDataUninstallParts(t *testing.T) {
 	if strings.Contains(parts.functions, `StrCpy $UserDataCheckbox 1`) || strings.Contains(parts.functions, `${NSD_Check}`) {
 		t.Error("the checkbox is checked by default")
 	}
-	// The page shows where the data is: NSIS expands the variables.
-	if !strings.Contains(parts.functions, `$APPDATA\xSec Desktop`) || !strings.Contains(parts.functions, `$LOCALAPPDATA\XSec`) {
+	// The page shows where the data is: NSIS expands the variables in its text.
+	if !strings.Contains(parts.texts, `$APPDATA\xSec Desktop`) || !strings.Contains(parts.texts, `$LOCALAPPDATA\XSec`) {
 		t.Error("the page does not name the folders")
 	}
 	// The uninstaller runs the script the installer puts in the app's folder.
@@ -104,6 +104,7 @@ func TestUserDataUninstallParts(t *testing.T) {
 	}
 	// The purge removes each link in the folders without following it.
 	for _, want := range []string{
+		`Check-Top $env:APPDATA 'xSec Desktop'`,
 		`Remove-Top $env:APPDATA 'xSec Desktop'`,
 		`Remove-Top $env:LOCALAPPDATA 'XSec'`,
 		`[IO.Directory]::Delete($p, $false)`,
@@ -113,6 +114,16 @@ func TestUserDataUninstallParts(t *testing.T) {
 		if !strings.Contains(parts.script, want) {
 			t.Errorf("purge script lacks %q", want)
 		}
+	}
+	// Every folder is checked before anything is deleted: a failed check exits
+	// before the first deletion, so nothing is deleted.
+	checked, exit, removed := strings.LastIndex(parts.script, "\nCheck-Top "), strings.Index(parts.script, "exit 2"), strings.Index(parts.script, "\nRemove-Top ")
+	if checked < 0 || exit < checked || removed < exit {
+		t.Errorf("the purge script does not check every folder before it deletes: check at %d, exit at %d, delete at %d", checked, exit, removed)
+	}
+	// The check deletes and changes nothing: only Remove-Entry does.
+	if checks := purgeScriptHead[:strings.Index(purgeScriptHead, "function Remove-Entry")]; strings.Contains(checks, "Delete") || strings.Contains(checks, "SetAttributes") {
+		t.Error("the check deletes or changes files: only Remove-Entry may")
 	}
 	// The folders on the way to a listed one are checked for links first.
 	if !strings.Contains(parts.script, "Split(") {
@@ -126,8 +137,13 @@ func TestUserDataUninstallParts(t *testing.T) {
 // NSIS cuts a string at nsisMaxString when the uninstaller runs: no line of
 // its code may be that long, and a page too long for it is refused.
 func TestUserDataFitsNSIS(t *testing.T) {
-	parts := userDataScript(t, []string{`$APPDATA\xSec Desktop`, `$APPDATA\XSec`, `$LOCALAPPDATA\XSec`})
-	for _, part := range []string{parts.head, parts.page, parts.call, parts.functions} {
+	c := &Config{Name: "Userdata App"}
+	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`, `$APPDATA\XSec`, `$LOCALAPPDATA\XSec`}
+	parts, err := userDataUninstall(c, []string{"English", "SimpChinese"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []string{parts.head, parts.page, parts.call, parts.texts, parts.functions} {
 		for _, line := range strings.Split(part, "\n") {
 			if len(line) > nsisMaxString {
 				t.Errorf("a line of the uninstaller is %d characters: NSIS cuts it at %d", len(line), nsisMaxString)
@@ -138,34 +154,64 @@ func TestUserDataFitsNSIS(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		long = append(long, `$APPDATA\`+strings.Repeat("N", 120)+strconv.Itoa(i))
 	}
-	c := &Config{Name: "Userdata App"}
 	c.Windows.UserData = long
-	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "too long") {
+	if _, err := userDataUninstall(c, []string{"English"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("userDataUninstall accepted folders that the page cannot show: %v", err)
 	}
 }
 
-// buildUserDataInstaller builds the installer of an app named Setup Test
-// whose windows.userData is userData, and whose windows.userDataNote is note
-// when one is given. It returns the setup program, and the
-// folder the build wrote its files to.
-func buildUserDataInstaller(t *testing.T, userData []string, note ...string) (setup, work string) {
-	t.Helper()
-	list, err := json.Marshal(userData)
+// TestUninstallTexts checks the texts of the uninstaller in each language: each
+// has its text, and the ones that name the app keep the %s where it goes.
+func TestUninstallTexts(t *testing.T) {
+	for nlfid, text := range uninstallTexts {
+		for name, s := range map[string]string{
+			"question": text.question, "kept": text.kept, "notDeleted": text.notDeleted,
+			"checkbox": text.checkbox, "inUse": text.inUse, "failed": text.failed,
+		} {
+			if s == "" {
+				t.Errorf("%s: the %s text is empty", nlfid, name)
+			}
+		}
+		for name, s := range map[string]string{"question": text.question, "inUse": text.inUse, "failed": text.failed} {
+			if strings.Count(s, "%s") != 1 {
+				t.Errorf("%s: the %s text must name the app once, with %%s", nlfid, name)
+			}
+		}
+	}
+	if got := uninstallTextFor("German"); got != uninstallTexts["English"] {
+		t.Error("a language without a table of its own does not get the English texts")
+	}
+}
+
+// TestUserDataTextsByLanguage checks that the uninstaller's texts come in each
+// language of the installer, under the name of its NSIS language file.
+func TestUserDataTextsByLanguage(t *testing.T) {
+	c := &Config{Name: "Userdata App"}
+	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`}
+	c.Windows.UserDataNote = "你的保险库和云端登录凭据将一并删除。"
+	parts, err := userDataUninstall(c, []string{"English", "SimpChinese"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	userDataJSON := `"userData": ` + string(list)
-	if len(note) > 0 {
-		text, err := json.Marshal(note[0])
-		if err != nil {
-			t.Fatal(err)
+	for _, want := range []string{
+		`LangString UD_Label ${LANG_SIMPCHINESE} "同时删除这台电脑上 Userdata App 的数据吗？$\r$\n你的保险库和云端登录凭据将一并删除。$\r$\n如果不删除，数据保存在以下文件夹中：`,
+		`LangString UD_Checkbox ${LANG_SIMPCHINESE} "同时删除我的数据。此操作无法撤销。"`,
+		`LangString UD_Checkbox ${LANG_ENGLISH} "Also delete my data. This cannot be undone."`,
+	} {
+		if !strings.Contains(parts.texts, want) {
+			t.Errorf("the texts lack %q", want)
 		}
-		userDataJSON += `, "userDataNote": ` + string(text)
 	}
+}
+
+// buildWindowsInstaller builds the installer of an app named Setup Test, whose
+// windows configuration is the JSON members given after its signing command.
+// It returns the setup program, and the folder the build wrote its files to.
+func buildWindowsInstaller(t *testing.T, members string) (setup, work string) {
+	t.Helper()
 	dir := testModule(t, map[string]string{
 		"main.go":              "package main\n\nfunc main() {}\n",
-		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", ` + userDataJSON + `}}`,
+		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "windows": {"signCommand": "echo %1>>signed.txt", ` + members + `}}`,
 		"resources/data/a.txt": "a",
 		"resources/icon.png":   string(defaultIcon()),
 	})
@@ -185,6 +231,26 @@ func buildUserDataInstaller(t *testing.T, userData []string, note ...string) (se
 	return artifacts[len(artifacts)-1], work
 }
 
+// buildUserDataInstaller builds the installer of buildWindowsInstaller with
+// windows.userData as userData, and windows.userDataNote as note when one is
+// given.
+func buildUserDataInstaller(t *testing.T, userData []string, note ...string) (setup, work string) {
+	t.Helper()
+	list, err := json.Marshal(userData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userDataJSON := `"userData": ` + string(list)
+	if len(note) > 0 {
+		text, err := json.Marshal(note[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		userDataJSON += `, "userDataNote": ` + string(text)
+	}
+	return buildWindowsInstaller(t, userDataJSON)
+}
+
 // installSilently installs setup into a new folder, silently, and returns it.
 func installSilently(t *testing.T, setup string) string {
 	t.Helper()
@@ -193,6 +259,60 @@ func installSilently(t *testing.T, setup string) string {
 		t.Fatalf("installing: %v\n%s", err, out)
 	}
 	return dir
+}
+
+// TestWindowsInstallerLanguage checks that windows.language, for an app without
+// translations, puts the installer and its uninstaller in that language, and
+// that the uninstaller's texts come in it.
+func TestWindowsInstallerLanguage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	_, work := buildWindowsInstaller(t, `"language": "zh-Hans", "userData": ["$APPDATA\\Setup Test Language"]`)
+	script, err := os.ReadFile(filepath.Join(work, "installer.nsi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`!insertmacro MUI_LANGUAGE "SimpChinese"`,
+		`LangString UD_Checkbox ${LANG_SIMPCHINESE} "同时删除我的数据。此操作无法撤销。"`,
+		`LangString DesktopShortcutText ${LANG_SIMPCHINESE} "创建桌面快捷方式"`,
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("the installer lacks %q", want)
+		}
+	}
+	if strings.Contains(string(script), `MUI_LANGUAGE "English"`) {
+		t.Error("the installer has English as well as the language of windows.language")
+	}
+	if strings.Contains(string(script), "Create a desktop shortcut") {
+		t.Error("the finish page's checkbox is in English in a Chinese installer")
+	}
+}
+
+// TestWindowsLanguageConfigIsChecked checks that loadConfig refuses a
+// windows.language NSIS has no language file of, on every platform.
+func TestWindowsLanguageConfigIsChecked(t *testing.T) {
+	for _, tc := range []struct {
+		lang string
+		ok   bool
+	}{{"zh-Hans", true}, {"zh-hans", true}, {"en", true}, {"xx-YY", false}} {
+		dir := testModule(t, map[string]string{
+			"main.go":   "package main\n\nfunc main() {}\n",
+			"mygo.json": `{"name": "Userdata", "identifier": "com.example.userdata", "version": "1.0.0", "windows": {"language": "` + tc.lang + `"}}`,
+		})
+		_, err := loadConfig(dir)
+		if (err == nil) != tc.ok {
+			t.Errorf("windows.language %q: loadConfig = %v", tc.lang, err)
+		} else if err != nil && !strings.Contains(err.Error(), "windows.language") {
+			t.Errorf("windows.language %q: the error does not name the setting: %v", tc.lang, err)
+		}
+	}
 }
 
 // TestWindowsInstallerUserData builds an installer that offers to delete a
@@ -357,9 +477,10 @@ func uninstallInPlace(t *testing.T, dir string, args ...string) error {
 }
 
 // TestWindowsInstallerUserDataLocked checks a file of the data that is in use:
-// the purge cannot delete it, so the uninstall stops before it removes anything
-// else. The app and its uninstaller stay, and the same uninstall runs to the end
-// once the file is free.
+// the purge cannot delete it, so the uninstall deletes nothing and stops. The
+// folder listed first, which has no file in use, stays too; the app and its
+// uninstaller stay; and the same uninstall runs to the end once the file is
+// free.
 func TestWindowsInstallerUserDataLocked(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compiles programs")
@@ -369,8 +490,8 @@ func TestWindowsInstallerUserDataLocked(t *testing.T) {
 	} else if tool == "" {
 		t.Skip("NSIS is not installed")
 	}
-	const folder = "Setup Test Locked"
-	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + folder})
+	const folder, free = "Setup Test Locked", "Setup Test Locked Free"
+	setup, _ := buildUserDataInstaller(t, []string{`$APPDATA\` + free, `$APPDATA\` + folder})
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return
 	}
@@ -379,12 +500,23 @@ func TestWindowsInstallerUserDataLocked(t *testing.T) {
 		t.Fatal("APPDATA is not set")
 	}
 	data := filepath.Join(appData, folder)
+	freeData := filepath.Join(appData, free)
 	if _, err := os.Stat(data); err == nil {
 		t.Fatalf("%s exists: the test would delete it", data)
 	}
+	if _, err := os.Stat(freeData); err == nil {
+		t.Fatalf("%s exists: the test would delete it", freeData)
+	}
 	t.Cleanup(func() { os.RemoveAll(data) })
+	t.Cleanup(func() { os.RemoveAll(freeData) })
 
 	install := installSilently(t, setup)
+	if err := os.MkdirAll(freeData, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(freeData, "free.txt"), []byte("not in use"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(data, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -406,6 +538,10 @@ func TestWindowsInstallerUserDataLocked(t *testing.T) {
 	if _, err := os.Stat(locked); err != nil {
 		t.Errorf("the purge deleted the file in use: %v", err)
 	}
+	// All or nothing: the folder listed first has nothing in use, and it stays.
+	if _, err := os.Stat(filepath.Join(freeData, "free.txt")); err != nil {
+		t.Errorf("the purge deleted a folder although a file in use stopped it: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(install, "Uninstall.exe")); err != nil {
 		t.Errorf("the uninstall stopped, but its uninstaller is gone: %v", err)
 	}
@@ -415,6 +551,9 @@ func TestWindowsInstallerUserDataLocked(t *testing.T) {
 	uninstall(t, install, "/PURGE")
 	if _, err := os.Stat(data); !os.IsNotExist(err) {
 		t.Errorf("the retried /PURGE left %s (%v)", data, err)
+	}
+	if _, err := os.Stat(freeData); !os.IsNotExist(err) {
+		t.Errorf("the retried /PURGE left %s (%v)", freeData, err)
 	}
 }
 
@@ -513,30 +652,30 @@ func TestUserDataNote(t *testing.T) {
 	c := &Config{Name: "Userdata App"}
 	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`}
 	c.Windows.UserDataNote = `Your $vault and your "cloud" login credentials will be deleted.`
-	parts, err := userDataUninstall(c)
+	parts, err := userDataUninstall(c, []string{"English"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := `as well?$\r$\n` + nsisEscape(c.Windows.UserDataNote) + `$\r$\nIt is kept in these folders:`
-	if !strings.Contains(parts.functions, want) {
+	if !strings.Contains(parts.texts, want) {
 		t.Errorf("the page lacks the note between the question and the folders: %q", want)
 	}
 	c.Windows.UserData = nil
-	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "needs windows.userData") {
+	if _, err := userDataUninstall(c, []string{"English"}); err == nil || !strings.Contains(err.Error(), "needs windows.userData") {
 		t.Errorf("a note without windows.userData was accepted: %v", err)
 	}
 	c.Windows.UserData = []string{`$APPDATA\xSec Desktop`}
 	c.Windows.UserDataNote = "two\nlines"
-	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "one line of text") {
+	if _, err := userDataUninstall(c, []string{"English"}); err == nil || !strings.Contains(err.Error(), "one line of text") {
 		t.Errorf("a note of two lines was accepted: %v", err)
 	}
 	// A note of the longest length the page takes is accepted; a longer one is refused.
 	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote)
-	if _, err := userDataUninstall(c); err != nil {
+	if _, err := userDataUninstall(c, []string{"English"}); err != nil {
 		t.Errorf("a note of %d characters was refused: %v", maxUserDataNote, err)
 	}
 	c.Windows.UserDataNote = strings.Repeat("N", maxUserDataNote+1)
-	if _, err := userDataUninstall(c); err == nil || !strings.Contains(err.Error(), "too long") {
+	if _, err := userDataUninstall(c, []string{"English"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("a note too long for the page was accepted: %v", err)
 	}
 }

@@ -240,6 +240,8 @@ export interface WindowsConfig {
   userData?: string[];
   /** One line on the uninstaller's page about what the folders of `userData` hold, e.g. "Your vault and your cloud sign-in are deleted." It needs `userData`. */
   userDataNote?: string;
+  /** The language of the installer and its uninstaller, such as `zh-Hans`, for an app without translations (`i18n`); English by default. */
+  language?: string;
 }
 
 /** Linux packaging. */

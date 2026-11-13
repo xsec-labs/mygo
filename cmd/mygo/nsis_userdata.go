@@ -13,6 +13,12 @@ import (
 // checked by default; a silent one (/S) keeps the data unless it is given
 // /PURGE, which deletes it without asking.
 //
+// The deletion is all or nothing while no file is in use. The purge checks
+// every listed folder first, and deletes nothing when a file in them cannot
+// be opened for deletion or a folder cannot be checked; only then does it
+// delete. A file that comes into use after the check can still leave part of
+// the data behind.
+//
 // The folders are deleted by PowerShell rather than by RMDir /r. An app can
 // link a folder it works in (a junction into a project, for instance) into
 // its own data, and that link has to go without its target: PowerShell
@@ -36,6 +42,11 @@ const nsisMaxString = 1024
 // installer puts it in the app's folder, and the uninstaller runs it before
 // it removes that folder.
 const purgeScriptName = "userdata-purge.ps1"
+
+// Exit codes of the purge script. A purge that stops before it deletes
+// anything exits with purgeNothingDeleted; one that fails while it deletes
+// exits with 1.
+const purgeNothingDeleted = 2
 
 // userDataFolder is an entry of windows.userData: rel, a folder under the
 // NSIS variable $root (APPDATA or LOCALAPPDATA), with \ separators.
@@ -81,8 +92,50 @@ type userDataParts struct {
 	head      string // after MUI2.nsh: includes and variables
 	page      string // between the confirm page and the progress page
 	call      string // first in the uninstall section, before anything is removed
+	texts     string // after the languages: the page's and the messages' texts, per language
 	functions string // after the uninstall section
 	script    string // the PowerShell script the uninstaller runs, as purgeScriptName
+}
+
+// uninstallText is the text of the uninstaller's page and of its messages in
+// one language. The formats take the app's name where %s is.
+type uninstallText struct {
+	question   string // the question the page asks, before the note
+	kept       string // what comes before the folders
+	notDeleted string // what comes after the folders
+	checkbox   string // the checkbox that asks for the deletion
+	inUse      string // the message when the purge deleted nothing
+	failed     string // the message when the purge failed while it deleted
+}
+
+// uninstallTexts are the texts of the uninstaller by the name of the NSIS
+// language file. A language without a table of its own gets the English one.
+var uninstallTexts = map[string]uninstallText{
+	"English": {
+		question:   "Delete the data of %s on this computer as well?",
+		kept:       "It is kept in these folders:",
+		notDeleted: "Folders you work in are not deleted.",
+		checkbox:   "Also delete my data. This cannot be undone.",
+		inUse:      "The uninstall was cancelled and no data was deleted: some of the data of %s is in use or cannot be checked. Close the app and run the uninstaller again.",
+		failed:     "The uninstall was cancelled: some of the data of %s could not be deleted. Close the app and run the uninstaller again.",
+	},
+	"SimpChinese": {
+		question:   "同时删除这台电脑上 %s 的数据吗？",
+		kept:       "如果不删除，数据保存在以下文件夹中：",
+		notDeleted: "你工作的文件夹不会被删除。",
+		checkbox:   "同时删除我的数据。此操作无法撤销。",
+		inUse:      "卸载已取消，没有删除任何数据：%s 的部分数据正在被占用，或无法检查。请关闭应用后再次运行卸载程序。",
+		failed:     "卸载已取消：%s 的部分数据无法删除。请关闭应用后再次运行卸载程序。",
+	},
+}
+
+// uninstallTextFor returns the text of the uninstaller in the language of an
+// NSIS language file, such as "SimpChinese".
+func uninstallTextFor(nlfid string) uninstallText {
+	if t, ok := uninstallTexts[nlfid]; ok {
+		return t
+	}
+	return uninstallTexts["English"]
 }
 
 // maxUserDataNote is the longest windows.userDataNote, in characters: the
@@ -110,15 +163,15 @@ func checkUserDataNote(w *Windows) error {
 }
 
 // userDataUninstall returns the parts of the installer script for
-// windows.userData.
-func userDataUninstall(c *Config) (userDataParts, error) {
+// windows.userData, whose texts are in each of the languages nlfids names.
+func userDataUninstall(c *Config, nlfids []string) (userDataParts, error) {
 	if err := checkUserDataNote(&c.Windows); err != nil {
 		return userDataParts{}, err
 	}
 	if len(c.Windows.UserData) == 0 {
 		return userDataParts{}, nil
 	}
-	var shown, purge strings.Builder
+	var shown, check, purge strings.Builder
 	for _, entry := range c.Windows.UserData {
 		f, err := parseUserData(entry)
 		if err != nil {
@@ -127,21 +180,30 @@ func userDataUninstall(c *Config) (userDataParts, error) {
 		// NSIS expands $APPDATA and $LOCALAPPDATA in the page's text, so
 		// the page shows where the data is.
 		fmt.Fprintf(&shown, `$\r$\n    $%s\%s`, f.root, f.rel)
+		fmt.Fprintf(&check, "Check-Top $env:%s %s\n", f.root, psString(f.rel))
 		fmt.Fprintf(&purge, "Remove-Top $env:%s %s\n", f.root, psString(f.rel))
 	}
-	// The question, then the note on its own line if there is one, then the
-	// folders.
-	question := "Delete the data of " + c.Name + " on this computer as well?"
-	sep, noteLine := " ", ""
-	if note := c.Windows.UserDataNote; note != "" {
-		sep, noteLine = `$\r$\n`, nsisEscape(note)+`$\r$\n`
-	}
-	label := `"` + nsisEscape(question) + sep + noteLine + nsisEscape("It is kept in these folders:") +
-		shown.String() + `$\r$\n$\r$\n` + nsisEscape("Folders you work in are not deleted.") + `"`
-	// The page's text is one NSIS string, and its folders expand to about
-	// 60 characters each: a page too long for NSIS is refused, not cut.
-	if len(label)+60*len(c.Windows.UserData) > nsisMaxString {
-		return userDataParts{}, fmt.Errorf("windows.userData: the folders are too long for the uninstaller's page")
+	var texts strings.Builder
+	for _, nlfid := range nlfids {
+		t := uninstallTextFor(nlfid)
+		// The question, then the note on its own line if there is one, then
+		// the folders.
+		sep, noteLine := " ", ""
+		if note := c.Windows.UserDataNote; note != "" {
+			sep, noteLine = `$\r$\n`, nsisEscape(note)+`$\r$\n`
+		}
+		label := nsisEscape(fmt.Sprintf(t.question, c.Name)) + sep + noteLine + nsisEscape(t.kept) +
+			shown.String() + `$\r$\n$\r$\n` + nsisEscape(t.notDeleted)
+		// The page's text is one NSIS string, and its folders expand to about
+		// 60 characters each: a page too long for NSIS is refused, not cut.
+		if len(label)+60*len(c.Windows.UserData) > nsisMaxString {
+			return userDataParts{}, fmt.Errorf("windows.userData: the folders are too long for the uninstaller's page")
+		}
+		id := strings.ToUpper(nlfid)
+		fmt.Fprintf(&texts, "LangString UD_Label ${LANG_%s} \"%s\"\n", id, label)
+		fmt.Fprintf(&texts, "LangString UD_Checkbox ${LANG_%s} %s\n", id, nsisString(t.checkbox))
+		fmt.Fprintf(&texts, "LangString UD_InUse ${LANG_%s} %s\n", id, nsisString(fmt.Sprintf(t.inUse, c.Name)))
+		fmt.Fprintf(&texts, "LangString UD_Failed ${LANG_%s} %s\n", id, nsisString(fmt.Sprintf(t.failed, c.Name)))
 	}
 	return userDataParts{
 		head: `!include "FileFunc.nsh"
@@ -152,8 +214,9 @@ func userDataUninstall(c *Config) (userDataParts, error) {
 Var DeleteUserData
 Var UserDataCheckbox
 `,
-		page: "UninstPage custom un.UserDataPage un.UserDataLeave\n",
-		call: "  ; The data goes first: if it cannot all be deleted, nothing else is removed.\n  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
+		page:  "UninstPage custom un.UserDataPage un.UserDataLeave\n",
+		call:  "  ; The data goes first: if any of it is in use, none is deleted and nothing else is removed.\n  ${If} $DeleteUserData == 1\n    Call un.DeleteUserData\n  ${EndIf}\n",
+		texts: texts.String(),
 		functions: `Function un.onInit
   StrCpy $DeleteUserData 0
   ${un.GetParameters} $R0
@@ -174,9 +237,9 @@ Function un.UserDataPage
   ${If} $0 == error
     Abort
   ${EndIf}
-  ${NSD_CreateLabel} 0 0 100% 80u ` + label + `
+  ${NSD_CreateLabel} 0 0 100% 80u "$(UD_Label)"
   Pop $0
-  ${NSD_CreateCheckbox} 0 88u 100% 12u "Also delete my data. This cannot be undone."
+  ${NSD_CreateCheckbox} 0 88u 100% 12u "$(UD_Checkbox)"
   Pop $UserDataCheckbox
   nsDialogs::Show
 FunctionEnd
@@ -190,26 +253,34 @@ FunctionEnd
 
 ; A purge that fails stops the uninstall before anything else is removed, so the
 ; uninstaller, its entry and the shortcuts stay, and the uninstall can run again
-; once the app is closed.
+; once the app is closed. The purge exits with ` + fmt.Sprint(purgeNothingDeleted) + ` when it deleted nothing.
 Function un.DeleteUserData
   nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\` + purgeScriptName + `"'
   Pop $0
+  ${If} $0 == "` + fmt.Sprint(purgeNothingDeleted) + `"
+    IfSilent +2 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(UD_InUse)"
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
   ${If} $0 != "0"
     IfSilent +2 0
-    MessageBox MB_OK|MB_ICONEXCLAMATION "The uninstall was cancelled: some of the data of ` + nsisEscape(c.Name) + ` could not be deleted. Close the app and run the uninstaller again."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(UD_Failed)"
     SetErrorLevel 1
     Quit
   ${EndIf}
 FunctionEnd
 `,
-		script: purgeScriptHead + purge.String() + "if ($script:failed -gt 0) { exit 1 }\n",
+		script: purgeScriptHead + check.String() + "if ($script:failed -gt 0) { exit " + fmt.Sprint(purgeNothingDeleted) + " }\n" +
+			purge.String() + "if ($script:failed -gt 0) { exit 1 }\n",
 	}, nil
 }
 
 // purgeScriptHead defines the PowerShell functions of the purge. It runs
-// on Windows PowerShell 5.1, which every supported Windows has. Each entry
-// is removed on its own: a failure is counted and reported, and the rest
-// still goes.
+// on Windows PowerShell 5.1, which every supported Windows has. The folders
+// are checked first, and nothing is deleted if a check fails. Then each entry
+// is removed on its own: a failure is counted and reported, and the rest still
+// goes.
 const purgeScriptHead = `$ErrorActionPreference = 'Stop'
 $script:failed = 0
 function Has([IO.FileAttributes]$a, [IO.FileAttributes]$f) { ($a -band $f) -eq $f }
@@ -225,6 +296,50 @@ function Find-Entry([string]$dir, [string]$name) {
   }
   foreach ($e in $found) { return $e }
   return $null
+}
+function Find-Target([string]$root, [string]$rel) {
+  # The entry the listed folder names, or $null when there is none. Each folder
+  # above the listed one is found in its parent first. A link there stops the
+  # purge of the folder below it, before anything under it is deleted. A link
+  # whose target is gone holds nothing, so it stops nothing.
+  $parts = $rel.Split('\')
+  $dir = $root
+  for ($i = 0; $i -lt $parts.Length - 1; $i++) {
+    $e = Find-Entry $dir ($parts[$i])
+    if ($null -eq $e) { return $null }
+    if (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint)) {
+      if (-not [IO.Directory]::Exists($e.FullName)) { return $null }
+      throw ('not following the link on the way to ' + $e.FullName)
+    }
+    $dir = $e.FullName
+  }
+  return (Find-Entry $dir ($parts[$parts.Length - 1]))
+}
+function Check-Entry($e) {
+  # Checks that Remove-Entry can delete e, and deletes nothing. A file that
+  # another process has open cannot be opened here, so the purge stops before
+  # it deletes anything. A link is not opened: its target is not part of the data.
+  try {
+    if (Has ($e.Attributes) ([IO.FileAttributes]::Directory)) {
+      if (-not (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint))) {
+        foreach ($c in (New-Object System.IO.DirectoryInfo -ArgumentList $e.FullName).GetFileSystemInfos()) { Check-Entry $c }
+      }
+    } elseif (-not (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint))) {
+      [IO.File]::Open($e.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None).Close()
+    }
+  } catch {
+    $script:failed++
+    [Console]::Error.WriteLine($e.FullName + ': ' + $_.Exception.Message)
+  }
+}
+function Check-Top([string]$root, [string]$rel) {
+  try {
+    $last = Find-Target $root $rel
+    if ($null -ne $last) { Check-Entry $last }
+  } catch {
+    $script:failed++
+    [Console]::Error.WriteLine($_.Exception.Message)
+  }
 }
 function Remove-Entry($e) {
   try {
@@ -245,21 +360,7 @@ function Remove-Entry($e) {
 }
 function Remove-Top([string]$root, [string]$rel) {
   try {
-    # Each folder above the listed one is found in its parent first. A link
-    # there stops the purge of the folder below it, before anything under it
-    # is deleted. A link whose target is gone holds nothing, so it stops nothing.
-    $parts = $rel.Split('\')
-    $dir = $root
-    for ($i = 0; $i -lt $parts.Length - 1; $i++) {
-      $e = Find-Entry $dir ($parts[$i])
-      if ($null -eq $e) { return }
-      if (Has ($e.Attributes) ([IO.FileAttributes]::ReparsePoint)) {
-        if (-not [IO.Directory]::Exists($e.FullName)) { return }
-        throw ('not following the link on the way to ' + $e.FullName)
-      }
-      $dir = $e.FullName
-    }
-    $last = Find-Entry $dir ($parts[$parts.Length - 1])
+    $last = Find-Target $root $rel
     if ($null -ne $last) { Remove-Entry $last }
   } catch {
     $script:failed++

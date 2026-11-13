@@ -36,7 +36,9 @@ type Windows struct {
 	// delete them in a checkbox that is not checked by default; a silent
 	// uninstall (/S) keeps them unless it is given /PURGE, which deletes them
 	// without asking. Links in them are removed, not followed, so the
-	// folders the app works in are kept.
+	// folders the app works in are kept. The deletion is all or nothing: when
+	// a file in them is in use, or a folder cannot be checked, nothing is
+	// deleted and the uninstall stops.
 	UserData []string `json:"userData"`
 	// UserDataNote says on the uninstaller's page what the folders of
 	// UserData hold, as one line of plain text of at most 120 characters, e.g.
@@ -44,6 +46,11 @@ type Windows struct {
 	// cloud sign-in are deleted." It shows between the question and the
 	// folders, and needs UserData.
 	UserDataNote string `json:"userDataNote"`
+	// Language is the language of the Windows installer and of its
+	// uninstaller, as a tag such as zh-Hans, for an app without translations
+	// (i18n): an app with them has its own languages in the installer. The
+	// default is English.
+	Language string `json:"language"`
 }
 
 func (w *Windows) signs() bool { return w.Certificate != "" || w.SignCommand != "" }
