@@ -276,27 +276,50 @@ func nsisLanguage(tag string) (string, bool) {
 	return "", false
 }
 
-// nsisLanguageMacros returns the lines that give the Windows installer the
-// languages of the app, a MUI_LANGUAGE each, the app's own first, which
-// the installer falls back to; it picks the one of the system's language.
-// It is English alone for an app that ships no languages. A language NSIS
-// has no language file of fails the build, as it would fail makensis.
-func nsisLanguageMacros(langs []appLanguage) (string, error) {
-	seen := map[string]bool{}
-	var b strings.Builder
+// installerLanguages returns the languages of the Windows installer and of its
+// uninstaller: the app's own, or else windows.language, the one language of an
+// app without translations.
+func installerLanguages(c *Config) ([]appLanguage, error) {
+	langs, err := c.languages()
+	if err != nil || len(langs) > 0 || c.Windows.Language == "" {
+		return langs, err
+	}
+	return []appLanguage{{Tag: c.Windows.Language}}, nil
+}
+
+// nsisLanguageNames returns the names of the NSIS language files of the
+// languages of the installer, the first one first and each name once: English
+// alone for an installer with none. A language NSIS has no language file of
+// fails the build, as it would fail makensis.
+func nsisLanguageNames(langs []appLanguage) ([]string, error) {
+	if len(langs) == 0 {
+		return []string{"English"}, nil
+	}
+	var names []string
 	for _, l := range langs {
 		name, ok := nsisLanguage(l.Tag)
 		if !ok {
-			return "", fmt.Errorf("the Windows installer cannot be in %s, which NSIS has no language file of; NSIS 3 has those of %s", l.Tag, strings.Join(nsisLanguageList(), ", "))
+			return nil, fmt.Errorf("the Windows installer cannot be in %s, which NSIS has no language file of; NSIS 3 has those of %s", l.Tag, strings.Join(nsisLanguageList(), ", "))
 		}
-		if seen[name] {
-			continue
+		if !slices.Contains(names, name) {
+			names = append(names, name)
 		}
-		seen[name] = true
-		fmt.Fprintf(&b, "!insertmacro MUI_LANGUAGE %s\n", nsisString(name))
 	}
-	if b.Len() == 0 {
-		return "!insertmacro MUI_LANGUAGE \"English\"\n", nil
+	return names, nil
+}
+
+// nsisLanguageMacros returns the lines that give the Windows installer the
+// languages of the app, a MUI_LANGUAGE each, the app's own first, which
+// the installer falls back to; it picks the one of the system's language.
+// It is English alone for an app that ships no languages.
+func nsisLanguageMacros(langs []appLanguage) (string, error) {
+	names, err := nsisLanguageNames(langs)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, name := range names {
+		fmt.Fprintf(&b, "!insertmacro MUI_LANGUAGE %s\n", nsisString(name))
 	}
 	return b.String(), nil
 }

@@ -146,7 +146,19 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 	uninstallKey := `Software\Microsoft\Windows\CurrentVersion\Uninstall\` + c.Identifier
 	shortcut := nsisEscape(fsName(c.Name)) + ".lnk"
 	register, unregister := nsisAssociations(c, exe)
-	userData, err := userDataUninstall(c)
+	langs, err := installerLanguages(c)
+	if err != nil {
+		return "", err
+	}
+	languages, err := nsisLanguageMacros(langs)
+	if err != nil {
+		return "", err
+	}
+	nlfids, err := nsisLanguageNames(langs)
+	if err != nil {
+		return "", err
+	}
+	userData, err := userDataUninstall(c, nlfids)
 	if err != nil {
 		return "", err
 	}
@@ -158,14 +170,6 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 			return "", err
 		}
 		fmt.Fprintf(&files, "  File \"/oname=%s\" %s\n", purgeScriptName, nsisString(path))
-	}
-	langs, err := c.languages()
-	if err != nil {
-		return "", err
-	}
-	languages, err := nsisLanguageMacros(langs)
-	if err != nil {
-		return "", err
 	}
 	script := `Unicode true
 ManifestDPIAware true
@@ -185,7 +189,7 @@ BrandingText " "
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 ` + userData.page + `!insertmacro MUI_UNPAGE_INSTFILES
-` + languages + `
+` + languages + userData.texts + `
 Section
   SetOutPath "$INSTDIR"
 ` + files.String() + `  WriteUninstaller "$INSTDIR\Uninstall.exe"

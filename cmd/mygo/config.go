@@ -271,6 +271,11 @@ func (c *Config) validate() error {
 	if err := checkUserDataNote(&c.Windows); err != nil {
 		return err
 	}
+	if lang := c.Windows.Language; lang != "" {
+		if _, ok := nsisLanguage(lang); !ok {
+			return fmt.Errorf("windows.language %q: NSIS has no language file of it, such as en or zh-Hans", lang)
+		}
+	}
 	if cmd := c.Linux.Command; cmd != "" && !commandRe.MatchString(cmd) {
 		return fmt.Errorf("linux.command %q is not a command name (a letter or digit, then letters, digits, ., _, + or -)", cmd)
 	}
