@@ -215,9 +215,15 @@ $script:failed = 0
 function Has([IO.FileAttributes]$a, [IO.FileAttributes]$f) { ($a -band $f) -eq $f }
 function Find-Entry([string]$dir, [string]$name) {
   # The listing of the folder shows a link whose target is gone as an entry;
-  # Test-Path reads such a link as absent.
-  if (-not [IO.Directory]::Exists($dir)) { return $null }
-  foreach ($e in (New-Object System.IO.DirectoryInfo -ArgumentList $dir).GetFileSystemInfos($name)) { return $e }
+  # Test-Path reads such a link as absent. Only a folder that is not there has
+  # no entries. Any other error, such as access denied, is raised: Directory.Exists
+  # answers false for some errors too, so it cannot tell a missing folder apart.
+  try {
+    $found = (New-Object System.IO.DirectoryInfo -ArgumentList $dir).GetFileSystemInfos($name)
+  } catch [System.IO.DirectoryNotFoundException] {
+    return $null
+  }
+  foreach ($e in $found) { return $e }
   return $null
 }
 function Remove-Entry($e) {

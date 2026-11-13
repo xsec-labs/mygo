@@ -471,6 +471,40 @@ func TestWindowsInstallerUserDataDanglingLink(t *testing.T) {
 	}
 }
 
+// TestPurgeFindEntryRaisesErrors checks that the purge reads a folder it cannot
+// check as an error, not as a missing folder. A path that Windows does not allow
+// is such a folder: Directory.Exists answers false for it, so the old check
+// skipped it and the purge reported success. Find-Entry must raise that error,
+// and only a folder that is not there may read as absent.
+func TestPurgeFindEntryRaisesErrors(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the purge script runs on Windows PowerShell")
+	}
+	dir := t.TempDir()
+	script := purgeScriptHead + `
+try { if ($null -eq (Find-Entry ` + psString(filepath.Join(dir, "missing")) + ` 'x')) { 'missing: null' } else { 'missing: entry' } } catch { 'missing: threw' }
+try { if ($null -eq (Find-Entry ` + psString(filepath.Join(dir, "no<such")) + ` 'x')) { 'invalid: null' } else { 'invalid: entry' } } catch { 'invalid: threw' }
+`
+	path := filepath.Join(dir, "find-entry.ps1")
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	out, err := exec.Command(powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("powershell: %v\n%s", err, out)
+	}
+	var got []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			got = append(got, line)
+		}
+	}
+	if want := "missing: null|invalid: threw"; strings.Join(got, "|") != want {
+		t.Errorf("Find-Entry answers %q, want %q", got, want)
+	}
+}
+
 // TestUserDataNote checks the line the uninstaller's page shows about the
 // folders. It sits between the question and the folders, escaped for NSIS;
 // it needs windows.userData, and it is one line of text.
