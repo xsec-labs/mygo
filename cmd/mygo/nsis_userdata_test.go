@@ -281,6 +281,7 @@ func TestWindowsInstallerLanguage(t *testing.T) {
 	for _, want := range []string{
 		`!insertmacro MUI_LANGUAGE "SimpChinese"`,
 		`LangString UD_Checkbox ${LANG_SIMPCHINESE} "同时删除我的数据。此操作无法撤销。"`,
+		`LangString DesktopShortcutText ${LANG_SIMPCHINESE} "创建桌面快捷方式"`,
 	} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("the installer lacks %q", want)
@@ -288,6 +289,9 @@ func TestWindowsInstallerLanguage(t *testing.T) {
 	}
 	if strings.Contains(string(script), `MUI_LANGUAGE "English"`) {
 		t.Error("the installer has English as well as the language of windows.language")
+	}
+	if strings.Contains(string(script), "Create a desktop shortcut") {
+		t.Error("the finish page's checkbox is in English in a Chinese installer")
 	}
 }
 

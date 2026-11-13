@@ -181,7 +181,7 @@ RequestExecutionLevel user
 BrandingText " "
 ` + icon + `!define MUI_FINISHPAGE_RUN "$INSTDIR\` + nsisEscape(exe) + `"
 !define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "Create a desktop shortcut"
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(DesktopShortcutText)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 !include "MUI2.nsh"
 ` + userData.head + `!insertmacro MUI_PAGE_DIRECTORY
@@ -189,7 +189,7 @@ BrandingText " "
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 ` + userData.page + `!insertmacro MUI_UNPAGE_INSTFILES
-` + languages + userData.texts + `
+` + languages + desktopShortcutLangStrings(nlfids) + userData.texts + `
 Section
   SetOutPath "$INSTDIR"
 ` + files.String() + `  WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -360,6 +360,29 @@ func nsisEscape(s string) string {
 }
 
 func nsisString(s string) string { return `"` + nsisEscape(s) + `"` }
+
+// desktopShortcutTexts are the texts of the finish page's checkbox that creates
+// a desktop shortcut, by NLFID. A language without one gets the English text.
+var desktopShortcutTexts = map[string]string{
+	"English":     "Create a desktop shortcut",
+	"SimpChinese": "创建桌面快捷方式",
+}
+
+// desktopShortcutLangStrings returns the LangStrings of the finish page's
+// checkbox, DesktopShortcutText in each language of the installer: MUI's page
+// refers to the text by that name, so the checkbox speaks the installer's
+// language.
+func desktopShortcutLangStrings(nlfids []string) string {
+	var b strings.Builder
+	for _, nlfid := range nlfids {
+		text, ok := desktopShortcutTexts[nlfid]
+		if !ok {
+			text = desktopShortcutTexts["English"]
+		}
+		fmt.Fprintf(&b, "LangString DesktopShortcutText ${LANG_%s} %s\n", strings.ToUpper(nlfid), nsisString(text))
+	}
+	return b.String()
+}
 
 // downloadProgress shows how much of a download arrived on t.
 type downloadProgress struct {
