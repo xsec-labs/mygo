@@ -472,10 +472,11 @@ func TestWindowsInstallerUserDataDanglingLink(t *testing.T) {
 }
 
 // TestPurgeFindEntryRaisesErrors checks that the purge reads a folder it cannot
-// check as an error, not as a missing folder. A path that Windows does not allow
-// is such a folder: Directory.Exists answers false for it, so the old check
-// skipped it and the purge reported success. Find-Entry must raise that error,
-// and only a folder that is not there may read as absent.
+// check as an error, not as a missing folder. The case here is a path that Windows
+// does not allow: Directory.Exists answers false for it, so the old check skipped it
+// and the purge reported success. Find-Entry must raise that error, and only a
+// folder that is not there may read as absent. Access denied is not tested: on a
+// device it did not reproduce the hidden error, since Directory.Exists answered true.
 func TestPurgeFindEntryRaisesErrors(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("the purge script runs on Windows PowerShell")
