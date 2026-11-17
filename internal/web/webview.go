@@ -34,6 +34,7 @@ type webView struct {
 	url       string
 	srcdoc    bool // the page is HTML from LoadHTML, not a URL
 	loading   bool
+	started   bool // the app has asked for a page; a load before that is the browser's own
 	zoom      float64
 	userAgent string
 	funcs     []js.Func
@@ -160,12 +161,16 @@ func (v *webView) hide() {
 		return
 	}
 	v.shown = false
-	// A hidden view keeps no keyboard, which goes back to the content if the
-	// view had it (WebViewPlacement.Inert).
+	v.giveUpKeyboard()
+	v.el.Get("style").Set("display", "none")
+}
+
+// giveUpKeyboard hands the keyboard back to the content if the view has it: a
+// hidden or closed view keeps none (WebViewPlacement.Inert).
+func (v *webView) giveUpKeyboard() {
 	if js.Global().Get("document").Get("activeElement").Equal(v.el) {
 		v.s.focus()
 	}
-	v.el.Get("style").Set("display", "none")
 }
 
 // clipPathCSS returns the clip-path that leaves visible of the frame the part of
@@ -238,11 +243,13 @@ func cssRGBA(c platform.Color) string {
 	return "rgba(" + itoa(int(c.R)) + "," + itoa(int(c.G)) + "," + itoa(int(c.B)) + "," + ftoa(float64(c.A)/255) + ")"
 }
 
-// listen reports the page's load to the handler, unless the view has closed.
+// listen reports the page's load to the handler, unless the view has closed. A
+// load before the app asked for a page is the browser's own, of the empty frame
+// (a browser may fire it after the frame is inserted), and is not reported.
 func (v *webView) listen() {
 	f := js.FuncOf(func(js.Value, []js.Value) any {
 		v.s.w.b.sync(func() {
-			if v.closed {
+			if v.closed || !v.started {
 				return
 			}
 			v.loading = false
@@ -283,7 +290,7 @@ func (v *webView) LoadURL(url string) {
 	}
 	v.el.Call("removeAttribute", "srcdoc")
 	v.el.Set("src", url)
-	v.url, v.srcdoc, v.loading = url, false, true
+	v.url, v.srcdoc, v.loading, v.started = url, false, true, true
 }
 
 // LoadHTML loads HTML in the view. The browser gives an HTML document the URL of
@@ -294,7 +301,7 @@ func (v *webView) LoadHTML(html, baseURL string) {
 	}
 	v.el.Call("removeAttribute", "src")
 	v.el.Set("srcdoc", html)
-	v.url, v.srcdoc, v.loading = baseURL, true, true
+	v.url, v.srcdoc, v.loading, v.started = baseURL, true, true, true
 }
 
 // LoadFile is not available in a browser: a page loads only from a URL or from
@@ -303,7 +310,8 @@ func (v *webView) LoadFile(path, readAccessDir string) {
 	log.Printf("mygo: browsers load no file into a web view (%s)", path)
 }
 
-// Reload loads the page again; the cache is the browser's.
+// Reload loads the page again: a URL page loads the URL LoadURL gave, not the
+// address the frame has moved to. The cache is the browser's.
 func (v *webView) Reload(ignoreCache bool) {
 	if v.closed {
 		return
@@ -433,12 +441,14 @@ func (v *webView) SetBackgroundColor(c platform.Color) {
 	}
 }
 
-// Close destroys the view; its handler hears no more of it.
+// Close destroys the view; its handler hears no more of it, and a keyboard the
+// view had goes back to the content.
 func (v *webView) Close() {
 	if v.closed {
 		return
 	}
 	v.closed = true
+	v.giveUpKeyboard()
 	v.el.Call("remove")
 	v.s.views.(*webViews).drop(v)
 	v.releaseFuncs()
