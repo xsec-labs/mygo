@@ -49,6 +49,10 @@ type surface struct {
 	// downX and downY place the last press, where a context menu opens.
 	downX, downY float64
 	clicks       platform.ClickCounter
+
+	// views are the web views over the canvas, which NewWebView makes: nil
+	// until one is (see webViewSet).
+	views webViewSet
 }
 
 func newSurface(w *window) (*surface, error) {
@@ -684,18 +688,16 @@ func (s *surface) SetTextInput(t platform.TextInputState) {
 	st.Set("height", ftoa(max(t.Caret.H, 1))+"px")
 }
 
-func (s *surface) UpdateAccessibility(*platform.AccessTree)  {}
-func (s *surface) StartDataDrag(platform.DragRequest)        {}
-func (s *surface) CancelDataDrag()                           {}
-func (s *surface) SetDropFormats([]transfer.Format)          {}
-func (s *surface) PlaceWebViews([]platform.WebViewPlacement) {}
-
-func (s *surface) NewWebView(*platform.WindowOptions, platform.WindowHandler) (platform.WebView, error) {
-	return nil, errUnsupported
-}
+func (s *surface) UpdateAccessibility(*platform.AccessTree) {}
+func (s *surface) StartDataDrag(platform.DragRequest)       {}
+func (s *surface) CancelDataDrag()                          {}
+func (s *surface) SetDropFormats([]transfer.Format)         {}
 
 func (s *surface) close() {
 	s.closed = true
+	if s.views != nil {
+		s.views.closeAll()
+	}
 	if s.pending {
 		js.Global().Call("cancelAnimationFrame", s.request)
 	}
