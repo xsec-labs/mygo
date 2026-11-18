@@ -42,6 +42,10 @@ type Options struct {
 	// Math, when set, builds blocks of display math from their TeX, which
 	// show as their TeX without it; math within text shows as its TeX.
 	Math func(c *ui.Context, tex string)
+	// InlineMath, when set, is asked for the text to show for each math
+	// within text, from its TeX: it returns false to show the TeX as it
+	// is (in the code font, muted). Copying gives the math's source.
+	InlineMath func(tex string) (string, bool)
 	// HTML, when set, builds HTML blocks from their HTML, which show as
 	// their HTML without it; within text, the tags of formatting (<b>,
 	// <i>, <code>, <br>, <mark>, <sub>, …) apply, and other tags show as
@@ -374,6 +378,7 @@ func (st *viewState) para(i int, base spanStyle) *para {
 	sb.block = i
 	sb.fade = st.fade
 	sb.notes = st.noteNumber
+	sb.inlineMath = st.o.InlineMath
 	sb.build(&pc.p, base)
 	return &pc.p
 }

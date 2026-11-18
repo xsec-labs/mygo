@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown/parser"
 )
 
 const sample = "# Title\n\nSome **bold** and a [link](https://go.dev), `code`.\n\n" +
@@ -366,6 +367,21 @@ func TestRevealBySentence(t *testing.T) {
 	tt.Advance(100 * time.Millisecond)
 	if got := strings.Join(tt.Texts(), ""); got != text {
 		t.Errorf("done, shows %q", got)
+	}
+}
+
+func TestViewInlineMath(t *testing.T) {
+	src := "so $x^2$ holds, and $\\unknown$ stays.\n"
+	o := &Options{Extensions: parser.Default | parser.ExtDollarMath, InlineMath: func(tex string) (string, bool) {
+		if tex == "x^2" {
+			return "x²", true
+		}
+		return "", false
+	}}
+	tt := ui.NewTester(func(c *ui.Context) { View(c, src, o) }, 600, 200)
+	got := strings.Join(tt.Texts(), "|")
+	if !strings.Contains(got, "x²") || strings.Contains(got, "x^2") || !strings.Contains(got, `\unknown`) {
+		t.Errorf("inline math shows %q", got)
 	}
 }
 

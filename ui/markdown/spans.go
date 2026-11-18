@@ -67,6 +67,8 @@ type spanBuilder struct {
 	notes func(label string) int
 	// linkIndex is the inline of the link being built.
 	linkIndex int
+	// inlineMath is Options.InlineMath.
+	inlineMath func(tex string) (string, bool)
 }
 
 // build makes the paragraph of block i, of base style s.
@@ -301,6 +303,12 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 				sb.add(n.Text, n.Start, n.End, true, s, link)
 			}
 		case parser.Math:
+			if sb.inlineMath != nil && !n.Display {
+				if text, ok := sb.inlineMath(n.Text); ok {
+					sb.add(text, n.Start, n.End, false, s, link)
+					break
+				}
+			}
 			cs := s
 			cs.font = sb.th.CodeFont
 			cs.color = sb.th.Muted

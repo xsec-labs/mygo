@@ -62,3 +62,28 @@ func TestReviewHealing(t *testing.T) {
 		}
 	}
 }
+
+// ExtDollarMathDigits reads $3803$ and $10\equiv 1$ as math, and still
+// reads amounts of money as money through the closing dollar's rules.
+func TestDollarMathDigits(t *testing.T) {
+	const math = `<span class="math inline">`
+	ext := Default | ExtDollarMath
+	for _, c := range []struct {
+		src  string
+		want bool
+	}{
+		{`所以 $3803$ 是质数`, true},
+		{`$10\equiv 1\pmod 9$，因此`, true},
+		{`余数为 $1,2,3$。`, true},
+		{`it costs $5 and $6 today`, false},
+		{`between $5-$10 or so`, false},
+		{`from $5 to $10 and $20`, false},
+	} {
+		if got := strings.Contains(render(c.src, ext), math); got {
+			t.Errorf("%q without ExtDollarMathDigits is math", c.src)
+		}
+		if got := strings.Contains(render(c.src, ext|ExtDollarMathDigits), math); got != c.want {
+			t.Errorf("%q with ExtDollarMathDigits: math %v, want %v: %s", c.src, got, c.want, render(c.src, ext|ExtDollarMathDigits))
+		}
+	}
+}
