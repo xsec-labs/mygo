@@ -384,3 +384,37 @@ func TestViewInlineMath(t *testing.T) {
 		t.Errorf("inline math shows %q", got)
 	}
 }
+
+// TestOrderedMarkerStaysOnOneLine checks the number of an item is not
+// broken at its period, whatever the list's last number: the marker is
+// sized with the same tabular figures it is drawn with. The theme's list
+// indent is a narrow one, where the marker has no room to spare.
+func TestOrderedMarkerStaysOnOneLine(t *testing.T) {
+	for _, src := range []string{
+		"1. one\n",
+		"5. one\n   1. nested\n",
+		"1. one\n   1. a\n   2. b\n2. two\n   7. nested\n3. three\n", // the nested "7." is alone in its list
+		"9. nine\n10. ten\n",
+	} {
+		o := &Options{Theme: &Theme{ListIndent: 1.25}}
+		tt := ui.NewTester(func(c *ui.Context) { View(c, src, o) }, 600, 400)
+		var marker []ui.Rect
+		for _, s := range tt.Texts() {
+			if len(s) > 1 && s[len(s)-1] == '.' && s[0] >= '0' && s[0] <= '9' {
+				r, ok := tt.Find(s)
+				if !ok {
+					t.Fatalf("%q: no %q", src, s)
+				}
+				marker = append(marker, r)
+			}
+		}
+		if len(marker) == 0 {
+			t.Fatalf("%q: no markers in %q", src, tt.Texts())
+		}
+		for _, r := range marker {
+			if r.H > 24 { // 14 DIPs text, 1.6 line height: one line is below 24
+				t.Errorf("%q: a marker is %v high, it wraps", src, r.H)
+			}
+		}
+	}
+}

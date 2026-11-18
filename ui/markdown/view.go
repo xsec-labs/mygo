@@ -516,7 +516,9 @@ func (st *viewState) list(c *ui.Context, i int, base spanStyle) ui.Element {
 	width := th.em(th.ListIndent)
 	if b.Ordered {
 		last := b.Number + max(0, st.countChildren(i)-1)
-		w, _ := c.MeasureText(0, ui.Span{Text: itoa(last) + string(b.Marker), Font: th.Font, Size: th.FontSize})
+		// Measured with the markers' own tabular figures: proportional ones are narrower ("1." in a
+		// one-item list), and the marker would wrap, its period on a line of its own.
+		w, _ := c.MeasureText(0, ui.Span{Text: itoa(last) + string(b.Marker), Font: th.Font, Size: th.FontSize, Features: "tnum"})
 		width = max(width, w+th.em(0.5))
 	}
 	col := ui.Column(c).Role(ui.RoleList)
