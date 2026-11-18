@@ -30,6 +30,11 @@ const (
 	// dollar followed by a space or a digit, nor before a closing one
 	// following a space or followed by a digit. It needs ExtMath.
 	ExtDollarMath
+	// ExtDollarMathDigits lets the opening dollar of ExtDollarMath be
+	// followed by a digit, as $3803$ and $10\equiv 1$: amounts of money
+	// still read as money through the closing dollar's rules (not after
+	// a space, not before a digit), as $5 and $6. It needs ExtDollarMath.
+	ExtDollarMathDigits
 
 	// GFM is GitHub Flavored Markdown.
 	GFM = ExtTables | ExtTaskLists | ExtStrikethrough | ExtAutolinks

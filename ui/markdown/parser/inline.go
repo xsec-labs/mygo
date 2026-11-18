@@ -580,8 +580,10 @@ func (ip *inlineParser) parseDollar() bool {
 	if ip.ext&ExtDollarMath == 0 {
 		return false
 	}
-	// A dollar followed by a space or a digit is money, not math.
-	if start+1 >= len(s) || s[start+1] == ' ' || s[start+1] == '\t' || s[start+1] == '\n' || isASCIIDigit(s[start+1]) {
+	// A dollar followed by a space is money, not math; so is one followed
+	// by a digit, unless ExtDollarMathDigits (the closing dollar's rules
+	// below still tell amounts of money from math).
+	if start+1 >= len(s) || s[start+1] == ' ' || s[start+1] == '\t' || s[start+1] == '\n' || isASCIIDigit(s[start+1]) && ip.ext&ExtDollarMathDigits == 0 {
 		return false
 	}
 	if ip.noDollar >= 0 && start >= ip.noDollar {

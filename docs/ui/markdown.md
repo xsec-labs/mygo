@@ -178,7 +178,12 @@ Math between `$$` and `$$`, `\[` and `\]`, or `\(` and `\)` shows as its
 TeX in the code font, as language models write it; `$…$` too with the
 `ExtDollarMath` extension, except where the dollars read as money.
 `Math` builds blocks of display math instead, as with a renderer of
-your own.
+your own. `ExtDollarMathDigits` also reads `$3803$` and `$10\equiv 1$`,
+where the opening dollar is followed by a digit; amounts such as `$5 and
+$6` still read as money through the closing dollar's rules.
+`InlineMath` turns the TeX of math within text into the text to show
+(for instance `x^2` into `x²`), or returns false to keep the TeX; copying
+the text gives the math's source.
 
 Raw HTML shows as text, so that a reply cannot hide anything. Within
 text, the tags of formatting that models write (`<b>`, `<i>`, `<u>`,
