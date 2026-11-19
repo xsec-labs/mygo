@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/egoist/mygo/internal/platform"
 	"testing"
 )
 
@@ -110,6 +111,13 @@ func TestTextAreaObjectPress(t *testing.T) {
 	}
 	if got := app.pressed[0]; got.Index != 2 || got.Rect.W != 40 || got.Rect.X != o.Rect.X || got.Rect.Y != o.Rect.Y {
 		t.Errorf("press reported %+v, painted at %+v", got, o)
+	}
+	// A Shift press extends the selection: it is not a press on the object.
+	app.pressed = nil
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y), Mods: platform.ModShift})
+	tt.Release(x, y)
+	if len(app.pressed) != 0 {
+		t.Errorf("a Shift press reported %+v", app.pressed)
 	}
 	// A press on the text beside it is not one on the object.
 	app.pressed = nil
