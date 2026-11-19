@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/egoist/mygo/internal/platform"
 	"testing"
+	"time"
 )
 
 // objectText is "ab", an inline object (the private-use rune U+E000) and
@@ -153,6 +154,43 @@ func TestTextRangesObjects(t *testing.T) {
 	for i := range want {
 		if ed.ranges[i] != want[i] {
 			t.Errorf("run %d is %v, want %v", i, ed.ranges[i], want[i])
+		}
+	}
+}
+
+// A drag is applied as the input's constructor returns, before the app
+// gives the ranges of the frame: it must hit-test the text as the user saw
+// it, with the object as wide as it was, not as the bare rune.
+func TestTextAreaObjectDragHitsTheTextAsSeen(t *testing.T) {
+	text := "asdasd"
+	tt := NewTester(func(c *Context) {
+		Column(c).Fill().Children(func() {
+			TextAreaBase(c, &text).Padding(6, 12).FillWidth().Lines(1, 6).
+				TextRanges(TextRange{Start: 0, End: 1, ObjectWidth: 135, ObjectHeight: 18, ObjectText: "x"}).
+				OnTextObjects(func(p *Painter, o InputObject) {})
+		})
+	}, 800, 300)
+	tt.Frame()
+	ed := objectEditor(tt)
+	after, _, _ := ed.area.caretAt(ed, 1, 0)
+	end, _, _ := ed.area.caretAt(ed, 7, 0)
+	at := func(x float32) float32 { return ed.originX + x }
+	for _, c := range []struct {
+		name string
+		x    float32
+		want int
+	}{
+		{"just right of the object", at(after) + 1, 1},
+		{"in the right half of the object", at(after) - 20, 1},
+		{"in the left half of the object", at(after) - 100, 0},
+		{"on the third letter", at(after) + 12, 3},
+	} {
+		tt.Advance(2 * time.Second) // not a double click
+		tt.Press(at(end)+2, 15)
+		tt.Move(c.x, 15)
+		tt.Release(c.x, 15)
+		if a, b := ed.selection(); a != c.want || b != 7 {
+			t.Errorf("drag from the end to %s: selection %d..%d, want %d..7", c.name, a, b, c.want)
 		}
 	}
 }

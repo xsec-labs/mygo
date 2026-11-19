@@ -76,6 +76,12 @@ type editor struct {
 	// shown are the options the build before set, of the input the user
 	// typed in, which its edits apply by (see withShown).
 	shown editorOptions
+	// shownRanges and shownApart are the ranges the build before gave (see
+	// TextRanges), which the edits that build's user typed apply by along
+	// with shown: an object's width and a weight change where a point in
+	// the text is, and the point the user pressed is where they saw it.
+	shownRanges []TextRange
+	shownApart  bool
 	// lines are a text area's least and most lines (Lines), as high as its
 	// wrapped text between them; zero for the paragraphs, at least three.
 	lines       [2]int
@@ -143,6 +149,10 @@ func (ed *editor) rebuild() {
 	ed.shown = editorOptions{ed.readOnly, ed.password, ed.onPaste, ed.onTextKey}
 	ed.readOnly, ed.password, ed.lines, ed.onPaste, ed.onTextKey = false, false, [2]int{}, nil, nil
 	ed.objectPaint, ed.objectPress = nil, nil
+	// This build's ranges start empty, in the buffer the build before
+	// last used.
+	ed.ranges, ed.shownRanges = ed.shownRanges[:0], ed.ranges
+	ed.apart, ed.shownApart = false, ed.apart
 }
 
 // withShown runs fn, which applies the user's edits, with the options of
@@ -153,7 +163,11 @@ func (ed *editor) withShown(fn func()) {
 	now := editorOptions{ed.readOnly, ed.password, ed.onPaste, ed.onTextKey}
 	o := ed.shown
 	ed.readOnly, ed.password, ed.onPaste, ed.onTextKey = o.readOnly, o.password, o.onPaste, o.onTextKey
+	ed.ranges, ed.shownRanges = ed.shownRanges, ed.ranges
+	ed.apart, ed.shownApart = ed.shownApart, ed.apart
 	fn()
+	ed.ranges, ed.shownRanges = ed.shownRanges, ed.ranges
+	ed.apart, ed.shownApart = ed.shownApart, ed.apart
 	ed.readOnly, ed.password, ed.onPaste, ed.onTextKey = now.readOnly, now.password, now.onPaste, now.onTextKey
 }
 
