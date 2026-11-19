@@ -388,7 +388,17 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	}
 	if target.editor != nil {
 		target.editor.pressMods = mods
-		target.editor.press(target.pressX, target.pressY, clicks, button)
+		ed := target.editor
+		ed.hasPressedObject = false
+		ed.press(target.pressX, target.pressY, clicks, button)
+		// A press with Shift extends the selection: it is not one on the object.
+		if ed.hasPressedObject && mods&Shift == 0 {
+			ed.hasPressedObject = false
+			o := ed.pressedObject
+			o.Rect.X, o.Rect.Y = o.Rect.X+target.x, o.Rect.Y+target.y
+			ed.objectPress(o)
+		}
+		ed.hasPressedObject = false
 	}
 	if clicks == 2 && button == 0 {
 		target.doubleClicks++

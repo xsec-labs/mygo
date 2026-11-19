@@ -33,7 +33,7 @@ func (ed *editor) selectedRanges() []text.Range {
 func (ed *editor) selectedText() string {
 	var out strings.Builder
 	for _, r := range ed.selectedRanges() {
-		out.WriteString(ed.buf.slice(r.Start, r.End))
+		ed.writeCopied(&out, r.Start, r.End)
 	}
 	return out.String()
 }
@@ -179,4 +179,21 @@ func (ed *editor) collapseVisual(direction int) text.CaretPosition {
 		return a
 	}
 	return z
+}
+
+// writeCopied writes the runes from start to end as they are copied: an
+// inline object with an ObjectText is that text.
+func (ed *editor) writeCopied(out *strings.Builder, start, end int) {
+	at := start
+	for _, r := range ed.inReach(start) {
+		if r.Start >= end {
+			break
+		}
+		if r.ObjectWidth > 0 && r.ObjectText != "" && r.Start >= at {
+			out.WriteString(ed.buf.slice(at, r.Start))
+			out.WriteString(r.ObjectText)
+			at = r.End
+		}
+	}
+	out.WriteString(ed.buf.slice(at, end))
 }

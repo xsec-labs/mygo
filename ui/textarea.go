@@ -409,6 +409,15 @@ func (a *area) paint(e *node, p *Painter, ox, oy float32) {
 			}
 		}
 		p.textForeground(l, ox, y, ts.color, ts, sp)
+		if ed.objectPaint != nil {
+			a.paragraphObjects(ed, i, l, ox, y, func(idx int, r Rect) {
+				o := InputObject{Index: idx, Rect: r, Hovered: e.c.rt.pointerIn && r.Contains(e.c.rt.pointerX, e.c.rt.pointerY)}
+				for _, sel := range ed.selectedRanges() {
+					o.Selected = o.Selected || sel.Start <= idx && idx < sel.End
+				}
+				ed.objectPaint(p, o)
+			})
+		}
 		if ed.compose != "" && b.para(ed.caret) == i {
 			c := ed.caret - start
 			for _, r := range l.Selection(c, c+utf8.RuneCountInString(ed.compose)) {
@@ -430,4 +439,59 @@ func (a *area) paint(e *node, p *Painter, ox, oy float32) {
 			e.c.After(blink - phase%blink)
 		}
 	}
+}
+
+// paragraphObjects calls fn with the rune and the box of each inline
+// object in paragraph i, laid out as l, whose origin is at (ox, y).
+func (a *area) paragraphObjects(ed *editor, i int, l *text.Layout, ox, y float32, fn func(idx int, r Rect)) {
+	for k := range l.Lines {
+		line := &l.Lines[k]
+		for _, g := range line.Glyphs {
+			if !g.Object {
+				continue
+			}
+			idx := a.global(ed, i, g.Cluster)
+			h := float32(0)
+			if r, ok := ed.objectRange(idx); ok {
+				h = r.ObjectHeight
+			}
+			fn(idx, Rect{ox + g.X, y + line.Baseline - h, g.Advance, h})
+		}
+	}
+}
+
+// objectAt returns the inline object under (x, y), relative to the
+// element, as boxes were of the last layout.
+func (a *area) objectAt(ed *editor, x, y float32) (InputObject, bool) {
+	var found InputObject
+	ok := false
+	if len(ed.buf.paras) == 0 || a.version == 0 {
+		return found, false
+	}
+	p := a.hs.at(max(float64(y-ed.originY)+a.scroll, 0))
+	p = max(0, min(p, len(ed.buf.paras)-1))
+	l := ed.buf.paras[p].layout
+	if l == nil {
+		return found, false
+	}
+	oy := ed.originY + float32(a.hs.top(p)-a.scroll)
+	a.paragraphObjects(ed, p, l, ed.originX, oy, func(idx int, r Rect) {
+		if r.Contains(x, y) {
+			found, ok = InputObject{Index: idx, Rect: r}, true
+		}
+	})
+	return found, ok
+}
+
+// objectRange returns the range that makes rune i an inline object.
+func (ed *editor) objectRange(i int) (TextRange, bool) {
+	for _, r := range ed.inReach(i) {
+		if r.Start > i {
+			break
+		}
+		if r.Start == i && r.ObjectWidth > 0 {
+			return r, true
+		}
+	}
+	return TextRange{}, false
 }

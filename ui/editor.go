@@ -57,6 +57,15 @@ type editor struct {
 	onPaste func(text string) bool
 	// onTextKey sees a key before the editor takes it (OnTextKey).
 	onTextKey func(k TextKey) bool
+	// objectPaint paints the inline objects of a text area
+	// (OnTextObjects), and objectPress sees a press on one
+	// (OnTextObjectPress).
+	objectPaint func(p *Painter, o InputObject)
+	objectPress func(o InputObject)
+	// pressedObject is the object the press that just went down hit, in
+	// the element's coordinates, until the engine tells objectPress.
+	pressedObject    InputObject
+	hasPressedObject bool
 	// keying is set while onTextKey runs, as the TextKey numbered keySeq
 	// is valid.
 	keying bool
@@ -133,6 +142,7 @@ type editorOptions struct {
 func (ed *editor) rebuild() {
 	ed.shown = editorOptions{ed.readOnly, ed.password, ed.onPaste, ed.onTextKey}
 	ed.readOnly, ed.password, ed.lines, ed.onPaste, ed.onTextKey = false, false, [2]int{}, nil, nil
+	ed.objectPaint, ed.objectPress = nil, nil
 }
 
 // withShown runs fn, which applies the user's edits, with the options of
