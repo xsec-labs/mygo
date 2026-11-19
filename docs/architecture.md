@@ -4196,17 +4196,17 @@ What was measured and left as it is:
 - *Two drawables* or *presenting with the transaction* settled in the same
   states from run to run, with no gain that held, and with two drawables
   frames waited for them.
-- *Presenting the frames beside web views as soon as drawn*, only those
-  that move a web view or draw over one presenting with the transaction
-  (a window showing a web view presents every frame with it): on an Apple
-  silicon Mac with a 75 Hz display (three runs each, Nov 2026,
-  `-webviews 3`), a key typed in a still window (`type`) showed in 22 to
-  26 ms either way, as with no web view. Typed while a frame is drawn
-  each refresh (`stream`), it showed in 33 to 34 ms with the transaction,
-  85 to 89 % of the refreshes showing a new frame and 8 to 12 % of the
-  frames never showing, and in 49 to 50 ms without it, every frame
-  showing, as in a window with no web view (47 to 51 ms): smoother, and
-  16 ms later.
+- *Presenting with the transaction only the frames that move a web view
+  or draw over one*, and the others as soon as drawn (a window showing a
+  web view presents every frame with the transaction). Tried in a patch
+  that was not kept, on an Apple silicon Mac with a 75 Hz display (three
+  runs each, Nov 2026, `-webviews 3`): a key typed in a still window
+  (`type`) showed in 22 to 26 ms either way, as with no web view. Typed
+  while a frame is drawn each refresh (`stream`), it showed in 33 to
+  34 ms with every frame presented with the transaction, 85 to 89 % of
+  the refreshes showing a new frame and 8 to 12 % of the frames never
+  showing, and in 49 to 50 ms with the patch, every frame showing, as in
+  a window with no web view (47 to 51 ms): smoother, and 16 ms later.
 
 On Windows, one frame waits ahead of the screen, which a swap chain's
 frame latency object tells room for (Direct3D 11 above): the frame drawn

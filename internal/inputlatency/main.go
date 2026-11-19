@@ -7,16 +7,17 @@
 // Each run is a process of its own with a window of native UI, shown
 // without activating the app, so it takes neither the keyboard nor the
 // front: typing into a text area (a key every 60 to 140 ms, each frame
-// after a pause; under -webviews web views that stay where they are, as a
-// chat's rendered formulas above its input; stream types the same while a
-// frame is drawn each refresh, as a reply coming in), scrolling a list of a million rows with the trackpad
-// (an event every 4 to 12 ms), dragging a box (the same), or animating a
-// box with no input (anim), or boxes casting wide shadows (30, -boxes),
-// which keep the GPU busy (heavy). Events come
-// from another goroutine through the main run loop, as the window
-// server's do, at any time within the display's refresh, and go through
-// the window as AppKit's (sendEvent:, scrollWheel:); an event is taken to
-// arrive when it is posted, so the time the main thread was busy counts.
+// after a pause; under -webviews web views that stay where they are, as
+// a chat's rendered formulas above its input; stream types the same
+// while a frame is drawn each refresh, as a reply coming in), scrolling
+// a list of a million rows with the trackpad (an event every 4 to 12
+// ms), dragging a box (the same), or animating a box with no input
+// (anim), or boxes casting wide shadows (30, -boxes), which keep the GPU
+// busy (heavy). Events come from another goroutine through the main run
+// loop, as the window server's do, at any time within the display's
+// refresh, and go through the window as AppKit's (sendEvent:,
+// scrollWheel:); an event is taken to arrive when it is posted, so the
+// time the main thread was busy counts.
 //
 // The frame showing an event is the next one the main thread presents
 // after handling it: the main thread handles events and builds frames in
