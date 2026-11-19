@@ -174,6 +174,7 @@ func TestTextAreaObjectDragHitsTheTextAsSeen(t *testing.T) {
 	ed := objectEditor(tt)
 	after, _, _ := ed.area.caretAt(ed, 1, 0)
 	end, _, _ := ed.area.caretAt(ed, 7, 0)
+	third, _, _ := ed.area.caretAt(ed, 3, 0) // font metrics differ between machines
 	at := func(x float32) float32 { return ed.originX + x }
 	for _, c := range []struct {
 		name string
@@ -183,7 +184,7 @@ func TestTextAreaObjectDragHitsTheTextAsSeen(t *testing.T) {
 		{"just right of the object", at(after) + 1, 1},
 		{"in the right half of the object", at(after) - 20, 1},
 		{"in the left half of the object", at(after) - 100, 0},
-		{"on the third letter", at(after) + 12, 3},
+		{"on the third letter", at(third), 3},
 	} {
 		tt.Advance(2 * time.Second) // not a double click
 		tt.Press(at(end)+2, 15)
