@@ -2,13 +2,14 @@
 // native UI on macOS: from when an event arrives to when the frame showing
 // it reaches the display. It needs a desktop session.
 //
-//	go run ./internal/inputlatency [-mode type,scroll,drag,anim] [-runs 8] [-events 300] [-webviews 3]
+//	go run ./internal/inputlatency [-mode type,stream,scroll,drag,anim] [-runs 8] [-events 300] [-webviews 3]
 //
 // Each run is a process of its own with a window of native UI, shown
 // without activating the app, so it takes neither the keyboard nor the
 // front: typing into a text area (a key every 60 to 140 ms, each frame
 // after a pause; under -webviews web views that stay where they are, as a
-// chat's rendered formulas above its input), scrolling a list of a million rows with the trackpad
+// chat's rendered formulas above its input; stream types the same while a
+// frame is drawn each refresh, as a reply coming in), scrolling a list of a million rows with the trackpad
 // (an event every 4 to 12 ms), dragging a box (the same), or animating a
 // box with no input (anim), or boxes casting wide shadows (30, -boxes),
 // which keep the GPU busy (heavy). Events come
