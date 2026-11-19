@@ -52,14 +52,14 @@ import (
 )
 
 func main() {
-	modes := flag.String("mode", "type,scroll,drag,anim", "what the runs do: type, scroll, drag, anim, heavy, separated by commas")
+	modes := flag.String("mode", "type,scroll,drag,anim", "what the runs do: type, stream (type while a frame is drawn each refresh), scroll, drag, anim, heavy, separated by commas")
 	runs := flag.Int("runs", 6, "how many runs of each mode")
 	events := flag.Int("events", 300, "events measured in a run, after warmup (refreshes for anim and heavy)")
 	warmup := flag.Int("warmup", 30, "events not measured at the start of a run (refreshes for anim and heavy)")
 	x := flag.Int("x", 0, "where the window opens, as WindowOptions.X")
 	y := flag.Int("y", 0, "where the window opens, as WindowOptions.Y")
 	boxes := flag.Int("boxes", 30, "how many boxes heavy draws")
-	webviews := flag.Int("webviews", 0, "how many web views type shows above its text area")
+	webviews := flag.Int("webviews", 0, "how many web views type and stream show above their text area")
 	child := flag.String("run", "", "run one measurement of this mode in this process, printing its figures")
 	flag.Parse()
 	if *child != "" {

@@ -229,11 +229,20 @@ var (
 
 func view(c *ui.Context) {
 	switch mode {
-	case "type":
+	case "type", "stream":
 		ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
 			// Web views that never move while the text below them changes.
 			for _, v := range pages {
 				ui.WebView(c, v).Height(60)
+			}
+			if mode == "stream" {
+				// Something moving beside them, as a reply coming in: a
+				// frame each refresh while the keys are typed.
+				ui.Box(c).Height(24).Draw(func(p *ui.Painter, r ui.Rect) {
+					x := float32(p.Now().UnixNano()%1e9) / 1e9 * (r.W - 24)
+					p.Fill(ui.Rect{X: r.X + x, Y: r.Y, W: 24, H: 24}, c.Theme().Accent, 4)
+					p.AnimationFrame()
+				})
 			}
 			ui.TextArea(c, &text).AutoFocus().Grow(1)
 		})
@@ -285,7 +294,7 @@ var pages []*mygo.WebView
 func measure(m string, events, warmup, x, y, n, webviews int) error {
 	boxes = n
 	switch m {
-	case "type", "scroll", "drag", "anim", "heavy":
+	case "type", "stream", "scroll", "drag", "anim", "heavy":
 	default:
 		return fmt.Errorf("unknown mode %q", m)
 	}
@@ -299,7 +308,7 @@ func measure(m string, events, warmup, x, y, n, webviews int) error {
 	mygo.App.WhenReady(func() {
 		window = mygo.NewWindow(mygo.WindowOptions{Title: "inputlatency", Width: 800, Height: 600, X: x, Y: y, Hidden: true, Content: ui.View(view)})
 		nsWindow = window.NativeHandle()
-		if mode == "type" {
+		if mode == "type" || mode == "stream" {
 			for i := range webviews {
 				v, err := window.NewWebView(mygo.WebViewOptions{})
 				if err != nil {
@@ -422,7 +431,7 @@ func run(events, warmup int) error {
 		return n <= warmup+events
 	}
 	switch mode {
-	case "type":
+	case "type", "stream":
 		for next() {
 			inject(sendKey)
 			time.Sleep(between(60, 140))
