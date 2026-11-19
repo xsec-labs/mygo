@@ -504,7 +504,10 @@ func run(events, warmup int) error {
 	}
 	if len(ss) == 0 {
 		if mode != "anim" && mode != "heavy" {
-			return errors.New("no event reached the screen")
+			mu.Lock()
+			waiting := len(pending)
+			mu.Unlock()
+			return fmt.Errorf("no event reached the screen: of %d frames presented, %d never showed; %d events wait for a frame (a window nothing shows of, as on another space, presents frames that never show)", np, ns, waiting)
 		}
 		fmt.Println(f.line())
 		return nil
