@@ -230,7 +230,11 @@ var (
 func view(c *ui.Context) {
 	switch mode {
 	case "type":
-		ui.Column(c).Fill().Padding(16).Children(func() {
+		ui.Column(c).Fill().Padding(16).Gap(8).Children(func() {
+			// Web views that never move while the text below them changes.
+			for _, v := range pages {
+				ui.WebView(c, v).Height(60)
+			}
 			ui.TextArea(c, &text).AutoFocus().Grow(1)
 		})
 	case "scroll":
@@ -275,7 +279,10 @@ func view(c *ui.Context) {
 // boxes is how many boxes heavy draws.
 var boxes int
 
-func measure(m string, events, warmup, x, y, n int) error {
+// pages are the web views type shows above its text area.
+var pages []*mygo.WebView
+
+func measure(m string, events, warmup, x, y, n, webviews int) error {
 	boxes = n
 	switch m {
 	case "type", "scroll", "drag", "anim", "heavy":
@@ -292,6 +299,18 @@ func measure(m string, events, warmup, x, y, n int) error {
 	mygo.App.WhenReady(func() {
 		window = mygo.NewWindow(mygo.WindowOptions{Title: "inputlatency", Width: 800, Height: 600, X: x, Y: y, Hidden: true, Content: ui.View(view)})
 		nsWindow = window.NativeHandle()
+		if mode == "type" {
+			for i := range webviews {
+				v, err := window.NewWebView(mygo.WebViewOptions{})
+				if err != nil {
+					errResult = err
+					mygo.App.Quit()
+					return
+				}
+				v.Page().LoadHTML(fmt.Sprintf("<body style='font:16px system-ui;margin:8px'>Web view %d: <i>e</i><sup>iπ</sup> + 1 = 0</body>", i+1), "")
+				pages = append(pages, v)
+			}
+		}
 		// As the app the user types into, which is active: App Nap would
 		// delay the inactive app's wakeups by milliseconds.
 		const userInitiated, latencyCritical = 0x00EFFFFF, 0xFF00000000

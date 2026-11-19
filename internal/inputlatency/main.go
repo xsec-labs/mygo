@@ -2,12 +2,13 @@
 // native UI on macOS: from when an event arrives to when the frame showing
 // it reaches the display. It needs a desktop session.
 //
-//	go run ./internal/inputlatency [-mode type,scroll,drag,anim] [-runs 8] [-events 300]
+//	go run ./internal/inputlatency [-mode type,scroll,drag,anim] [-runs 8] [-events 300] [-webviews 3]
 //
 // Each run is a process of its own with a window of native UI, shown
 // without activating the app, so it takes neither the keyboard nor the
 // front: typing into a text area (a key every 60 to 140 ms, each frame
-// after a pause), scrolling a list of a million rows with the trackpad
+// after a pause; under -webviews web views that stay where they are, as a
+// chat's rendered formulas above its input), scrolling a list of a million rows with the trackpad
 // (an event every 4 to 12 ms), dragging a box (the same), or animating a
 // box with no input (anim), or boxes casting wide shadows (30, -boxes),
 // which keep the GPU busy (heavy). Events come
@@ -58,10 +59,11 @@ func main() {
 	x := flag.Int("x", 0, "where the window opens, as WindowOptions.X")
 	y := flag.Int("y", 0, "where the window opens, as WindowOptions.Y")
 	boxes := flag.Int("boxes", 30, "how many boxes heavy draws")
+	webviews := flag.Int("webviews", 0, "how many web views type shows above its text area")
 	child := flag.String("run", "", "run one measurement of this mode in this process, printing its figures")
 	flag.Parse()
 	if *child != "" {
-		if err := measure(*child, *events, *warmup, *x, *y, *boxes); err != nil {
+		if err := measure(*child, *events, *warmup, *x, *y, *boxes, *webviews); err != nil {
 			fmt.Fprintln(os.Stderr, "inputlatency:", err)
 			os.Exit(1)
 		}
@@ -76,7 +78,7 @@ func main() {
 		var all []figures
 		for i := range *runs {
 			out, err := exec.Command(self, "-run", mode, "-events", strconv.Itoa(*events), "-warmup", strconv.Itoa(*warmup),
-				"-x", strconv.Itoa(*x), "-y", strconv.Itoa(*y), "-boxes", strconv.Itoa(*boxes)).Output()
+				"-x", strconv.Itoa(*x), "-y", strconv.Itoa(*y), "-boxes", strconv.Itoa(*boxes), "-webviews", strconv.Itoa(*webviews)).Output()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "inputlatency: %s run %d: %v\n", mode, i+1, err)
 				os.Exit(1)
