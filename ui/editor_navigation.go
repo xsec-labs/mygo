@@ -407,6 +407,11 @@ func (ed *editor) press(x, y float32, clicks, button int) {
 	if ed.area != nil {
 		ed.area.reveal = true
 	}
+	if ed.objectPress != nil && ed.area != nil && ed.dragUnit == 1 {
+		if o, ok := ed.area.objectAt(ed, x, y); ok {
+			ed.pressedObject, ed.hasPressedObject = o, true
+		}
+	}
 }
 
 func (ed *editor) release() { ed.dragging = false }

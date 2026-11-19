@@ -388,7 +388,15 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	}
 	if target.editor != nil {
 		target.editor.pressMods = mods
-		target.editor.press(target.pressX, target.pressY, clicks, button)
+		ed := target.editor
+		ed.hasPressedObject = false
+		ed.press(target.pressX, target.pressY, clicks, button)
+		if ed.hasPressedObject {
+			ed.hasPressedObject = false
+			o := ed.pressedObject
+			o.Rect.X, o.Rect.Y = o.Rect.X+target.x, o.Rect.Y+target.y
+			ed.objectPress(o)
+		}
 	}
 	if clicks == 2 && button == 0 {
 		target.doubleClicks++

@@ -4764,6 +4764,37 @@ func (_handle Element) OnTextKey(fn func(k TextKey) bool) Element {
 	return wrapElement(_node.OnTextKey(fn))
 }
 
+// OnTextObjectPress has fn see a press of the primary button on an inline
+// object of a text area, on the main thread as it comes: the caret goes
+// where the press put it, before or after the object, as for any press,
+// and fn tells the app which object it was. fn runs between frames, where
+// an Element kept from the view is no longer valid. Like ReadOnly, it
+// holds for the input that comes until the next frame.
+func (_handle Element) OnTextObjectPress(fn func(o InputObject)) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.OnTextObjectPress(fn))
+}
+
+// OnTextObjects has fn paint each inline object of a text area in view
+// (TextRange.ObjectWidth), as the area paints its text: over its
+// selection, under its caret. p is clipped to the area; fn draws within
+// o.Rect. Like ReadOnly, it holds for the input that comes until the next
+// frame. A text area that has fn follows the pointer, to give Hovered.
+func (_handle Element) OnTextObjects(fn func(p *Painter, o InputObject)) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.OnTextObjects(fn))
+}
+
 // Opacity makes the element and its children translucent.
 func (_handle Element) Opacity(o float32) Element {
 	_node := _handle.node()

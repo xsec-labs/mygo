@@ -264,7 +264,7 @@ func (ed *editor) styleRanges(ranges []TextRange, start, end int, paint bool) (s
 				reach = i
 				break
 			}
-			weighted = weighted || r.Weight > 0 && max(r.Start, start) < min(r.End, end)
+			weighted = weighted || (r.Weight > 0 || r.ObjectWidth > 0) && max(r.Start, start) < min(r.End, end)
 		}
 		if !weighted {
 			return "", nil
@@ -300,7 +300,7 @@ func (ed *editor) styleRanges(ranges []TextRange, start, end int, paint bool) (s
 				spans = append(spans, Span{})
 			}
 		}
-		styles = append(styles, text.Span{End: to, Weight: r.Weight})
+		styles = append(styles, text.Span{End: to, Weight: r.Weight, ObjectWidth: r.ObjectWidth, ObjectHeight: r.ObjectHeight})
 		if paint {
 			spans = append(spans, Span{Color: r.Color, Weight: r.Weight})
 		}
@@ -321,7 +321,7 @@ func (ed *editor) styleRanges(ranges []TextRange, start, end int, paint bool) (s
 		} else {
 			add(local(from, true), local(to, false), r)
 		}
-		weighted = weighted || r.Weight > 0
+		weighted = weighted || r.Weight > 0 || r.ObjectWidth > 0
 		colored = colored || r.Color.A > 0
 	}
 	key := ""

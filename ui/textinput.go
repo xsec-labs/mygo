@@ -327,6 +327,18 @@ type TextRange struct {
 	Start, End int
 	Color      Color
 	Weight     int
+	// ObjectWidth and ObjectHeight, when ObjectWidth is set, make the rune
+	// of the range an inline object of a text area: a box of that size on
+	// the baseline, drawn by what OnTextObjects gives instead of a glyph. The
+	// caret, the selection, Backspace and Delete take it as one rune, as a
+	// message field's mention that goes with one key press. A range that
+	// makes an object is one rune long (Start+1 == End) and takes no Color or
+	// Weight: they and an ObjectWidth of a longer range are ignored. Objects
+	// are not merged with the ranges around them or with each other.
+	ObjectWidth, ObjectHeight float32
+	// ObjectText is what the object is when its rune is copied or cut, as
+	// the label of an attachment: an object without it copies as its rune.
+	ObjectText string
 }
 
 // TextRanges styles runs of a text input's text, in the frames that call
@@ -343,6 +355,11 @@ func (e *node) TextRanges(ranges ...TextRange) *node {
 	}
 	for _, r := range ranges {
 		if r.End > r.Start {
+			if r.ObjectWidth > 0 && r.End-r.Start == 1 && r.ObjectHeight > 0 {
+				r.Color, r.Weight = Color{}, 0
+			} else {
+				r.ObjectWidth, r.ObjectHeight, r.ObjectText = 0, 0, ""
+			}
 			ed.ranges = append(ed.ranges, r)
 			ed.apart = false
 		}
@@ -350,9 +367,49 @@ func (e *node) TextRanges(ranges ...TextRange) *node {
 	return e
 }
 
+// InputObject describes an inline object of a text area, one that a
+// TextRange with an ObjectWidth made, to what OnTextObjects and
+// OnTextObjectPress give.
+type InputObject struct {
+	// Index is the rune of the text that is the object.
+	Index int
+	// Rect is the object's box, in the window's coordinates of the frame
+	// it is painted or pressed in.
+	Rect Rect
+	// Selected is set when the selection covers the object, and Hovered
+	// when the pointer is over it.
+	Selected, Hovered bool
+}
+
+// OnTextObjects has fn paint each inline object of a text area in view
+// (TextRange.ObjectWidth), as the area paints its text: over its
+// selection, under its caret. p is clipped to the area; fn draws within
+// o.Rect. Like ReadOnly, it holds for the input that comes until the next
+// frame. A text area that has fn follows the pointer, to give Hovered.
+func (e *node) OnTextObjects(fn func(p *Painter, o InputObject)) *node {
+	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
+		ed.objectPaint = fn
+		e.flags |= flagTrackPointer
+	}
+	return e
+}
+
+// OnTextObjectPress has fn see a press of the primary button on an inline
+// object of a text area, on the main thread as it comes: the caret goes
+// where the press put it, before or after the object, as for any press,
+// and fn tells the app which object it was. fn runs between frames, where
+// an Element kept from the view is no longer valid. Like ReadOnly, it
+// holds for the input that comes until the next frame.
+func (e *node) OnTextObjectPress(fn func(o InputObject)) *node {
+	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
+		ed.objectPress = fn
+	}
+	return e
+}
+
 // rangeMerge is what sortRanges reuses from frame to frame.
 type rangeMerge struct {
-	given          []TextRange
+	given, objects []TextRange
 	points, starts []int
 	all, colors    rangeHeap
 	weights        rangeHeap
@@ -366,7 +423,15 @@ type rangeMerge struct {
 // by the order they were given in.
 func (ed *editor) sortRanges() {
 	m := &ed.merge
-	given := append(m.given[:0], ed.ranges...)
+	given := m.given[:0]
+	objects := m.objects[:0]
+	for _, r := range ed.ranges {
+		if r.ObjectWidth > 0 {
+			objects = append(objects, r)
+		} else {
+			given = append(given, r)
+		}
+	}
 	points, starts := m.points[:0], m.starts[:0]
 	for i, r := range given {
 		points = append(points, r.Start, r.End)
@@ -405,8 +470,46 @@ func (ed *editor) sortRanges() {
 		}
 		out = append(out, r)
 	}
-	m.given, m.points, m.starts = given[:0], points[:0], starts[:0]
+	if len(objects) > 0 {
+		out = withObjects(out, objects)
+	}
+	m.given, m.points, m.starts, m.objects = given[:0], points[:0], starts[:0], objects[:0]
 	ed.ranges, ed.apart = out, true
+}
+
+// withObjects returns the runs apart with the objects, one rune each, in
+// their places: the runs lose the runes of the objects, and an object
+// given again over another's rune is dropped.
+func withObjects(runs, objects []TextRange) []TextRange {
+	slices.SortStableFunc(objects, func(a, b TextRange) int { return a.Start - b.Start })
+	kept := objects[:0]
+	for _, o := range objects {
+		if n := len(kept); n > 0 && kept[n-1].End > o.Start {
+			continue
+		}
+		kept = append(kept, o)
+	}
+	out := make([]TextRange, 0, len(runs)+2*len(kept))
+	for _, r := range runs {
+		from := r.Start
+		k, _ := slices.BinarySearchFunc(kept, from, func(o TextRange, at int) int { return o.Start - at })
+		for ; k < len(kept) && kept[k].Start < r.End; k++ {
+			if o := kept[k]; o.Start > from {
+				piece := r
+				piece.Start, piece.End = from, o.Start
+				out = append(out, piece)
+			}
+			from = kept[k].End
+		}
+		if from < r.End {
+			piece := r
+			piece.Start = from
+			out = append(out, piece)
+		}
+	}
+	out = append(out, kept...)
+	slices.SortFunc(out, func(a, b TextRange) int { return a.Start - b.Start })
+	return out
 }
 
 // rangeHeap is a heap of ranges by the order they were given in, the last
