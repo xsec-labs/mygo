@@ -56,7 +56,6 @@ func textInputBase(c *context, value *string, multiline bool) *node {
 		ed.compose = ""
 	}
 	ed.rebuild()
-	ed.ranges = ed.ranges[:0]
 	e.onValueInput(stringInput)
 
 	return e
